@@ -1,0 +1,5 @@
+# Large source file and private photos stay out of the repo
+3x3.pdf
+photos-inbox/
+__pycache__/
+*.pyc
