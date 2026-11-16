@@ -36,6 +36,14 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(fals
 const CLINIC_EMAIL = 'sherootsphysio@gmail.com';
 const form = document.getElementById('bookForm');
 const note = document.getElementById('formNote');
+// Phone field: digits only, never more than 10 (also cleans pasted text such as "+91 98765-43210")
+const phoneInput = form && form.querySelector('[name="phone"]');
+if (phoneInput) phoneInput.addEventListener('input', () => {
+  let d = phoneInput.value.replace(/\D/g, '');
+  if (d.length > 10 && d.startsWith('91')) d = d.slice(2);
+  phoneInput.value = d.slice(0, 10);
+  phoneInput.classList.remove('invalid');
+});
 if (form) form.addEventListener('submit', e => {
   e.preventDefault();
   let ok = true;
@@ -44,6 +52,8 @@ if (form) form.addEventListener('submit', e => {
     f.classList.toggle('invalid', bad);
     if (bad) ok = false;
   });
+  const ph = form.querySelector('[name="phone"]');
+  if (ph && ph.value.length !== 10) { ph.classList.add('invalid'); ph.focus(); note.textContent = 'Please enter a 10-digit phone number.'; return; }
   if (!ok) { note.textContent = 'Please fill in your name, phone number, date and time.'; return; }
   const d = Object.fromEntries(new FormData(form));
   const fmtDate = v => { const x = new Date(v + 'T00:00'); return isNaN(x) ? v : x.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
