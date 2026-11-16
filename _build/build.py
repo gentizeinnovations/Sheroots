@@ -43,31 +43,22 @@ CTA = '''    <section class="cta-band">
 '''
 
 def nav_links(active):
-    items = [('index.html', 'Home'), ('treatments.html', 'Treatments'), ('about.html', 'About')]
-    if C.AREAS: items.append(('areas/index.html', 'Areas'))
-    items.append(('contact.html', 'Contact'))
-    return ''.join(f'<a href="{h}"{" class=&quot;active&quot; aria-current=&quot;page&quot;" if h == active else ""}>{n}</a>'.replace('&quot;', '"') for h, n in items)
+    items = [('#top', 'Home'), ('#about', 'About'), ('#explore', 'Treatments'), ('#contact', 'Contact')]
+    return ''.join(f'<a href="{h}"' + (' class="active" aria-current="page"' if h == '#top' else '') + f'>{n}</a>' for h, n in items)
 
 def header(active):
     return f'''  <header class="site" id="site-header">
-    <div class="topbar">
-      <div class="wrap tb-in">
-        <span class="tb-hours"><i class="dot"></i>Open 9 AM &ndash; 1 PM &nbsp;&middot;&nbsp; 5 PM &ndash; 9 PM</span>
-        <span class="tb-ta" lang="ta">காலை 9 &ndash; 1 &nbsp;&middot;&nbsp; மாலை 5 &ndash; 9</span>
-        <a class="tb-call" data-call href="contact.html">{PHONE_SVG}Call us <b class="call-num"></b></a>
-      </div>
-    </div>
     <div class="nav">
-      <a class="brand" href="index.html" aria-label="SHEroots Physiotherapy Clinic home">
+      <a class="brand" href="#top" aria-label="SHEroots Physiotherapy Clinic home">
         <img src="images/logo-left.webp" width="483" height="500" alt="SHEroots logo">
         <span class="brand-text"><strong>SHEroots</strong><small>Physiotherapy Clinic</small></span>
       </a>
       <nav class="links" id="menu" aria-label="Main">
         {nav_links(active)}
-        <a class="btn btn-primary menu-cta" data-call href="contact.html">{PHONE_SVG}Call us <b class="call-num"></b></a>
+        <a class="btn btn-primary menu-cta" data-call href="#contact">{PHONE_SVG}Call us <b class="call-num"></b></a>
       </nav>
       <div class="nav-right">
-        <a class="btn btn-primary nav-cta" data-call href="contact.html">{PHONE_SVG}Call us</a>
+        <a class="btn btn-primary nav-cta" data-call href="#contact">{PHONE_SVG}Call us</a>
         <img class="badge" src="images/logo-right.webp" width="499" height="500" alt="SHEroots badge">
         <button class="burger" aria-label="Open menu" aria-expanded="false" aria-controls="menu"><span></span><span></span><span></span></button>
       </div>
@@ -76,22 +67,14 @@ def header(active):
 '''
 
 def footer():
-    areas = ('<a href="areas/index.html">Areas</a>' if C.AREAS else '')
-    return f'''<footer class="footer">
-    <div class="wrap foot">
-      <div class="foot-brand">
-        <img src="images/logo-left.webp" width="483" height="500" loading="lazy" alt="">
-        <div><strong>SHEroots</strong><span>Physiotherapy Clinic</span></div>
-      </div>
-      <nav class="foot-links" aria-label="Footer"><a href="index.html">Home</a><a href="treatments.html">Treatments</a><a href="about.html">About</a>{areas}<a href="contact.html">Contact</a></nav>
-      <p>&copy; <span id="yr"></span> SHEroots Physiotherapy Clinic. All rights reserved.</p>
-    </div>
+    return '''<footer class="footer foot-credit">
+    <p>Crafted by <strong>Zolvminds</strong></p>
   </footer>'''
 
 MOBILE_BAR = f'''<nav class="mobile-bar" aria-label="Quick actions">
-    <a class="mb-call" data-call href="contact.html">{PHONE_SVG}<span>Call us</span></a>
-    <a href="treatments.html"><span>Treatments</span></a>
-    <a href="contact.html"><span>Book</span></a>
+    <a class="mb-call" data-call href="#contact">{PHONE_SVG}<span>Call us</span></a>
+    <a href="#explore"><span>Treatments</span></a>
+    <a href="#contact"><span>Book</span></a>
   </nav>'''
 
 def prefixize(html, depth):
@@ -113,7 +96,7 @@ def page(fname, title, desc, main, active, depth=0, extra_head=''):
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
   <meta name="description" content="{desc}">
-  <meta name="theme-color" content="#e6007e">
+  <meta name="theme-color" content="#e20c75">
   <link rel="icon" href="images/logo-right.webp" type="image/webp">
   <script>document.documentElement.classList.add('js')</script>
   <link rel="stylesheet" href="styles.css">{extra_head}
@@ -153,6 +136,69 @@ def page_hero(kicker, h, lead, ta='', crumbs=''):
 
 # ---------- HOME (swap hero art for a real photo if one exists; add clinic gallery) ----------
 home = main_of('index').replace('class="hero-copy reveal"','class="hero-copy"').replace('class="hero-art reveal"','class="hero-art"')
+def explorer():
+    """Treatments: two tiles (Core / Women's), each a grid of separate photo cards. A card opens that treatment's details in a dialog."""
+    BLURB = {
+        'neck-pain': 'Relieves neck pain and stiffness.', 'shoulder-pain': 'Improves shoulder movement.',
+        'tennis-elbow': 'Eases elbow pain and strain.', 'back-pain-sciatica': 'Alleviates back pain and nerve pain.',
+        'knee-pain': 'Reduces joint pain and stiffness.', 'ankle-sprain': 'Promotes ankle healing and stability.',
+        'joint-pain': 'Relieves joint pain and discomfort.', 'wrist-carpal-tunnel': 'Eases wrist pain and numbness.',
+        'posture-correction': 'Improves alignment and body balance.', 'sports-injuries': 'Rehabilitates sports and activity injuries.',
+        'weight-loss': 'Supports safe, sustainable weight management.', 'pelvic-floor': 'Strengthens pelvic floor and bladder control.',
+        'postnatal-care': 'Aids safe and faster postnatal recovery.', 'pcos-pcod': 'Supports hormone balance and wellness.',
+        'pregnancy-care': 'Keeps you active and prepared for delivery.', 'diastasis-recti': 'Helps close the abdominal muscle gap.',
+        'urinary-incontinence': 'Improves bladder control and confidence.', 'cardiac-rehabilitation': 'Rebuilds heart health, stamina and strength.',
+        'dry-needling': 'Relieves muscle tightness and trigger points.',
+    }
+    ICON = {
+        'core': '<path d="M16 3v26M12 7h8M11 12h10M10 17h12M11 22h10"/>',
+        'womens': '<path d="M16 5c3 4 3 9 0 14-3-5-3-10 0-14z"/><path d="M16 19c-5-1-9-4-10-9 5 1 9 4 10 9zM16 19c5-1 9-4 10-9-5 1-9 4-10 9z"/>',
+    }
+    FILE = {'core': 'core-physio.png', 'womens': 'womens-health.png'}
+    SUB = {'core': 'Pain, joints, movement', 'womens': 'Pregnancy, postnatal, pelvic'}
+    groups = [(C.CORE, 'core'), (C.WOMEN, 'womens')]
+    tabs, sets, panels, n = [], [], [], 0
+    for gi, (gname, gid) in enumerate(groups):
+        cards = []
+        for s in C.SERVICES:
+            if s[3] != gname: continue
+            slug, en, ta, intro = s[0], s[1], s[2], s[4]
+            n += 1
+            cards.append(f'<li><button type="button" class="ex-item" data-slug="{slug}" aria-haspopup="dialog">'
+                         f'<span class="ex-th"><img src="images/tx-{slug}.jpg" width="240" height="300" loading="lazy" alt=""></span>'
+                         f'<span class="ex-it"><span class="ex-n">{n:02d}</span><b>{esc(en)}</b><em lang="ta">{ta}</em></span>'
+                         f'<span class="ex-ar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span>'
+                         f'<span class="sr-only">View details</span></button></li>')
+            signs = "".join(f"<li>{esc(x)}</li>" for x in s[6])
+            helps = "".join(f"<li>{esc(x)}</li>" for x in s[7])
+            panels.append(f'''<article class="ex-panel" hidden data-slug="{slug}">
+              <img class="ex-p-img" src="images/tx-{slug}.jpg" alt="{esc(en)}">
+              <div class="ex-p-main">
+                <p class="ex-p-group">{esc(gname)}</p>
+                <h3>{esc(en)}</h3>
+                <p class="ex-p-ta" lang="ta">{ta}</p>
+                <p class="ex-p-txt">{esc(intro)}</p>
+                <div class="ex-p-more">
+                  <div><h5>{esc(s[5])}</h5><ul>{signs}</ul></div>
+                  <div><h5>How physiotherapy can help</h5><ul>{helps}</ul></div>
+                </div>
+                <a class="btn btn-primary" href="#contact" data-service="{esc(en)}">Book a session <span aria-hidden="true">→</span></a>
+              </div>
+            </article>''')
+        tabs.append(f'<button type="button" class="ex-tab ex-tab-{gid}{" on" if gi == 0 else ""}" role="tab" aria-selected="{"true" if gi == 0 else "false"}" data-g="{gi}">'
+                    f'<span class="ex-tab-ic" aria-hidden="true"><img src="images/icons/{FILE[gid]}" width="30" height="30" alt=""></span>'
+                    f'<span class="ex-tab-t"><strong>{esc(gname)}</strong><small>{SUB[gid]}</small></span>'
+                    f'<b class="ex-tab-n">{len(cards)}</b></button>')
+        sets.append(f'<ul class="ex-set" data-g="{gi}" role="tabpanel"{"" if gi == 0 else " hidden"}>{"".join(cards)}</ul>')
+    return f"""<div class="ex-tabs" role="tablist" aria-label="Treatment groups">{"".join(tabs)}</div>
+        <div class="ex-sets">{"".join(sets)}</div>
+        <div class="ex-panels" hidden>{"".join(panels)}</div>
+        <dialog class="ex-dlg" id="exDialog" aria-label="Treatment details">
+          <button type="button" class="ex-x" data-ex-close aria-label="Close">&times;</button>
+          <div class="ex-dbody"></div>
+          <div class="ex-dnav"><button type="button" data-ex-prev>&#8249; Previous</button><span class="ex-dcount"></span><button type="button" data-ex-next>Next &#8250;</button></div>
+        </dialog>"""
+home = home.replace('<!--EXPLORER-->', explorer())
 if photo('hero'):
     alt = C.PHOTO_ALT['hero']
     art = f'''<div class="hx-art hx-photo">
@@ -176,6 +222,9 @@ if clinic:
     home = home[:j] + gal + home[j:]
 page('index.html', 'SHEroots Physiotherapy Clinic | Expert Physiotherapy &amp; Women\'s Health',
      'Expert physiotherapy for neck, back, knee and shoulder pain, sports injuries, pelvic health, pregnancy and postnatal care. Open 9 AM to 1 PM and 5 PM to 9 PM.', home, 'index.html')
+
+print('built 1 page (one-page landing)')
+sys.exit(0)
 
 # ---------- ABOUT ----------
 about = main_of('about')
@@ -256,7 +305,7 @@ for s in C.SERVICES:
           <div class="side-card">
             <h3>Book a session</h3>
             <p>Open 9 AM – 1 PM and 5 PM – 9 PM.<br><span lang="ta">காலை 9 – 1 · மாலை 5 – 9</span></p>
-            <a class="btn btn-primary" data-call href="contact.html">{PHONE_SVG}Call us <b class="call-num"></b></a>
+            <a class="btn btn-primary" data-call href="#contact">{PHONE_SVG}Call us <b class="call-num"></b></a>
             <a class="btn btn-ghost" href="contact.html">Request an appointment</a>
           </div>
           <div class="side-card">
@@ -285,7 +334,7 @@ if C.AREAS:
       <h2>Treatments available</h2><ul class="ticks-list cols">{links}</ul>
     </div>
     <aside class="svc-side"><div class="side-card"><h3>Book a session</h3><p>Open 9 AM – 1 PM and 5 PM – 9 PM.</p>
-      <a class="btn btn-primary" data-call href="contact.html">{PHONE_SVG}Call us <b class="call-num"></b></a></div></aside></div></section>
+      <a class="btn btn-primary" data-call href="#contact">{PHONE_SVG}Call us <b class="call-num"></b></a></div></aside></div></section>
 ''' + CTA
         page(f'areas/{a["slug"]}.html', f'Physiotherapy in {esc(a["name"])} | SHEroots Physiotherapy Clinic', esc(a['blurb']).replace('"', '&quot;'), m, 'areas/index.html', depth=1)
 
