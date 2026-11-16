@@ -625,11 +625,25 @@ document.addEventListener('click', e => {
     else for (let i = 0; i < -steps; i++) l.unshift(l.pop());
     list = l; render();
   };
-  stage.addEventListener('click', e => { const c = e.target.closest('.stg-card'); if (c) move(+c.dataset.pos); });
-  stage.addEventListener('keydown', e => { const c = e.target.closest('.stg-card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); move(+c.dataset.pos); } });
+  // phones: a simple swipe row (one card at a time); the cards keep their order and the one in the middle is highlighted
+  const rowMq = matchMedia('(max-width: 639px)'), rowMode = () => rowMq.matches;
+  const dots = document.createElement('div'); dots.className = 'stg-dots'; dots.setAttribute('aria-hidden', 'true');
+  data.forEach(() => dots.appendChild(document.createElement('i')));
+  stage.parentNode.insertBefore(dots, stage.nextSibling);
+  const cardList = [...cards.values()];
+  const syncRow = () => {
+    if (!rowMode()) return;
+    const mid = stage.scrollLeft + stage.clientWidth / 2; let best = 0, bd = 1e9;
+    cardList.forEach((c, i) => { const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (d < bd) { bd = d; best = i; } });
+    cardList.forEach((c, i) => { c.classList.toggle('is-center', i === best); dots.children[i].classList.toggle('on', i === best); });
+  };
+  stage.addEventListener('scroll', syncRow, { passive: true });
+  rowMq.addEventListener('change', () => { stage.scrollLeft = 0; if (rowMode()) syncRow(); else render(); });
+  stage.addEventListener('click', e => { if (rowMode()) return; const c = e.target.closest('.stg-card'); if (c) move(+c.dataset.pos); });
+  stage.addEventListener('keydown', e => { if (rowMode()) return; const c = e.target.closest('.stg-card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); move(+c.dataset.pos); } });
   nav.children[0].addEventListener('click', () => move(-1)); nav.children[2].addEventListener('click', () => move(1));
   const mq = matchMedia('(min-width: 640px)'), size_ = () => { size = mq.matches ? 365 : 290; render(); };
-  addEventListener('resize', size_); size_();
+  addEventListener('resize', size_); size_(); syncRow();
 })();
 
 // Stacking cards (Every stage of life, Book a Session): each card scales back a little as the next one slides over it.
