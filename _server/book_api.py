@@ -596,10 +596,14 @@ def doctor_page(b, msg='', do=''):
         if do == 'decline':
             acts = f'<div class="card"><h2>Decline this request?</h2>{form("decline", "Decline request", "danger", reason)}<div class="acts">{back}</div></div>'
         elif do in ('accept', 'called'):
-            q = 'Accept this booking?' if do == 'accept' else 'Mark as confirmed by phone?'
+            # One tap from the email: the page confirms by itself as soon as it opens in a real browser.
+            # Email link scanners (Gmail, Outlook Safe Links) fetch the page but do not run scripts, so they
+            # cannot accept a booking. The button is a fallback if scripts are off.
             lab = 'Accept and confirm' if do == 'accept' else 'Yes, confirmed on a call'
-            acts = (f'<div class="card"><h2>{q}</h2><p class="muted">{esc(when(b))} &middot; {esc(b["concern"])}</p>'
-                    f'<div class="acts">{form(do, lab, "ok")}{back}</div></div>')
+            acts = (f'<div class="card"><h2>Confirming the booking…</h2><p class="muted">{esc(when(b))} &middot; {esc(b["concern"])}</p>'
+                    f'<div class="acts" id="autoacc">{form(do, lab, "ok")}{back}</div></div>'
+                    '<script>(function(){var f=document.querySelector("#autoacc form");if(!f)return;'
+                    'var b=f.querySelector("button");b.disabled=true;b.textContent="Confirming…";f.submit();})()</script>')
         else:
             acts = (f'<div class="card"><h2>Your reply</h2><div class="acts">{form("accept", "Accept booking", "ok")}'
                     f'<a class="btn secondary danger-text" href="{doctor_url(b["ref"], "decline")}">Decline</a></div>'
@@ -858,7 +862,10 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlsplit(self.path)
         origin = self.headers.get('Origin', '')
-        if origin and origin not in ALLOWED_ORIGINS: return self.send(403, {'ok': False, 'error': 'origin'})
+        # Our own pages send "Referrer-Policy: no-referrer", so browsers post their forms with Origin "null".
+        # Allow that only on the doctor/patient pages, which are authorised by the signed token anyway.
+        signed_form = origin == 'null' and re.fullmatch(r'/api/(b|d)/SHE-[0-9]{6}-[0-9A-F]{6}', u.path)
+        if origin and origin not in ALLOWED_ORIGINS and not signed_form: return self.send(403, {'ok': False, 'error': 'origin'})
         try: data = self.body()
         except Exception: return self.send(400, {'ok': False, 'error': 'bad request'})
         if u.path == '/api/book':
