@@ -1933,3 +1933,31 @@ body:has(.chat.open) .trk-tab,body:has(.chat.open) .mybk,body:has(.chat.open) .t
   .sf-qh .sf-links{display:flex;flex-wrap:wrap;gap:10px 22px}.sf-qh .sf-links li+li{margin-top:0}.sf-links a:hover{transform:none}
   .sf-bottom{flex-direction:column;align-items:flex-start}}
 @media (prefers-reduced-motion:reduce){.sf *{animation:none!important;transition-duration:.01ms!important}}
+
+/* ---------- Section spacing: one even rhythm for the home page (was up to ~190px between sections) ---------- */
+:root{--sec:clamp(48px,5.5vw,72px)}
+main .whyx{padding-top:var(--sec)}
+main .ab3{padding-bottom:var(--sec)}
+main .ex,main .meth,main .igp,main .visit{padding-block:var(--sec)}
+main .sk-sec{padding-top:var(--sec)}
+main .life.sk-sec{padding-bottom:12px}
+main .prom2.pv{padding-bottom:var(--sec)}
+main .faq-sec{padding-top:var(--sec)}
+main .contact.cf{min-height:0;padding-top:var(--sec)}
+
+/* "Every stage of life": cards still stack while scrolling. Each sticky slot is exactly as tall as its card plus
+   its stacking offset, so no card spills past the end of the section and there is no empty run-out. */
+main .sk-sec .sk-item{height:calc(92px + var(--i,0) * 16px + 500px)}
+main .sk-sec .sk-item:last-child{height:calc(92px + var(--i,0) * 16px + 500px + 16px)}
+@media (max-width:820px){
+  main .sk-sec .sk-item{height:calc(84px + var(--i,0) * 12px + 640px)}
+  main .sk-sec .sk-item:last-child{height:calc(84px + var(--i,0) * 12px + 640px + 16px)}}
+
+/* "Join the movement": normal height, pills in tidy centred rows that pop in */
+main .pills{height:auto;margin:0}
+main .pills-stick{position:static;height:auto;overflow:visible;display:block;padding:var(--sec) 20px;text-align:center}
+main .pills-pile{position:static;display:flex;flex-wrap:wrap;justify-content:center;gap:12px 14px;max-width:980px;margin:28px auto 0;padding:0}
+main .pills .pl{position:static;left:auto;top:auto;opacity:1;transform:rotate(var(--r,0deg))}
+.js main .pills:not(.in) .pl{opacity:0;transform:translateY(18px) rotate(var(--r,0deg)) scale(.9)}
+main .pills.in .pl{transition:opacity .45s ease,transform .6s cubic-bezier(.34,1.56,.64,1);transition-delay:calc(var(--k,0) * 60ms)}
+@media (prefers-reduced-motion:reduce){main .pills .pl{transition:none}.js main .pills:not(.in) .pl{opacity:1;transform:none}}

@@ -482,72 +482,21 @@ const GOOGLE_COUNT = '';
 
 })();
 
-/* "Join the movement": the pills settle into tidy rows (never over any words) while the heading stays pinned */
+/* "Join the movement": a normal-height section. When it scrolls into view the pills pop in one after
+   another, and the highlighted word in the heading cycles while the section is on screen. */
 (() => {
   const pills = document.querySelector('[data-pills]'); if (!pills) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const stick = pills.querySelector('.pills-stick'), head = pills.querySelector('.pills-head') || pills.querySelector('.pills-h');
   const pl = [...pills.querySelectorAll('.pl')], swap = pills.querySelector('[data-swap]');
-  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-  const ease = t => 1 - Math.pow(1 - t, 3);
+  pl.forEach((p, i) => { p.style.setProperty('--r', ((i * 37) % 7 - 3) + 'deg'); p.style.setProperty('--k', i); });
   const words = ['pain-free', 'pregnancy-ready', 'postnatal-strong', 'moving freely'];
-  let wi = 0;
-
-  /* place every pill in a row that never touches another pill or the heading; shrink pills on short screens until all fit */
-  const arrange = scale => {
-    pills.style.setProperty('--pscale', scale);
-    const small = innerWidth < 700, W = stick.clientWidth, H = stick.clientHeight;
-    const edge = small ? 14 : 40, gapX = small ? 10 : 14, gapY = small ? 12 : 16;
-    const bottom0 = small ? 150 : 110;
-    const ph = pl[0].offsetHeight, pitch = ph + gapY;
-    const rows = []; let row = [], w = 0;
-    pl.forEach(p => {
-      const pw = p.offsetWidth;
-      if (row.length && w + gapX + pw > W - 2 * edge) { rows.push(row); row = []; w = 0; }
-      w += (row.length ? gapX : 0) + pw; row.push([p, pw, w]);
-    });
-    if (row.length) rows.push(row);
-    /* centre heading + pills as one group on the pinned screen */
-    const gapH = small ? 22 : 30, group = head.offsetHeight + gapH + rows.length * pitch - gapY;
-    stick.style.paddingTop = Math.max(small ? 88 : 100, (H - group) / 2) + 'px';
-    const hBot = head.offsetTop + head.offsetHeight, y0 = hBot + gapH;
-    const fits = y0 + rows.length * pitch - gapY <= H - bottom0;
-    rows.forEach((r, ri) => {
-      const total = r[r.length - 1][2];
-      let x = (W - total) / 2;
-      const y = y0 + ri * pitch;
-      r.forEach(([p, pw]) => { p._x = x; p._y = y; x += pw + gapX; });
-    });
-    return fits;
-  };
-  const layout = () => {
-    const scales = [1, 0.9, 0.8, 0.72, 0.64];
-    for (const s of scales) { if (arrange(s)) break; }
-    pl.forEach((p, i) => {
-      p.style.left = p._x + 'px'; p.style.top = '0px';
-      p._rot = ((i * 37) % 9 - 4) + 'deg';
-      p.style.setProperty('--r', p._rot);
-    });
-    update();
-  };
-
-  const update = () => {
-    const r = pills.getBoundingClientRect(), H = innerHeight;
-    if (r.bottom < -50 || r.top > H + 50) return;
-    const lead = H * 0.55;   // pills start settling while the section is still coming into view, so the heading never sits alone
-    const p = clamp((lead - r.top) / (r.height - H + lead));
-    pl.forEach((el, i) => {
-      const t = ease(clamp((p - 0.04 - i * 0.05) / 0.16));
-      el.style.opacity = t;
-      el.style.transform = 'translateY(' + (el._y - 26 * (1 - t)) + 'px) rotate(' + el._rot + ') scale(' + (0.92 + 0.08 * t) + ')';
-    });
-    const n = Math.min(words.length - 1, Math.floor(p * words.length));
-    if (n !== wi) { wi = n; swap.classList.add('out'); setTimeout(() => { swap.textContent = words[wi]; swap.classList.remove('out'); layout(); }, 200); }
-  };
-
-  addEventListener('scroll', update, { passive: true }); addEventListener('resize', layout);
-  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(layout);
-  layout();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!('IntersectionObserver' in window)) { pills.classList.add('in'); return; }
+  let wi = 0, timer = null;
+  const cycle = () => { swap.classList.add('out'); setTimeout(() => { wi = (wi + 1) % words.length; swap.textContent = words[wi]; swap.classList.remove('out'); }, 220); };
+  new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { pills.classList.add('in'); if (!reduce && swap && !timer) timer = setInterval(cycle, 2400); }
+    else if (timer) { clearInterval(timer); timer = null; }
+  }), { threshold: 0.2 }).observe(pills);
 })();
 
 /* Instagram cards: the share button shares (or copies) the link to that post */
