@@ -594,11 +594,18 @@ document.addEventListener('click', e => {
   });
 })();
 
-// Phone quick-action bar: tuck it away while the booking form is on screen (the form is already the action)
+// Phone quick-action bar: tuck it away while the booking form or the footer is on screen
+// (both already have their own Call / WhatsApp actions, and the footer then needs no extra bottom space)
 (() => {
-  const bar = document.querySelector('.mobile-bar'), form = document.getElementById('contact');
-  if (!bar || !form || !('IntersectionObserver' in window)) return;
-  new IntersectionObserver(es => es.forEach(e => bar.classList.toggle('is-away', e.isIntersecting)), { threshold: 0.25 }).observe(form);
+  const bar = document.querySelector('.mobile-bar');
+  const targets = [document.getElementById('contact'), document.querySelector('footer.sf')].filter(Boolean);
+  if (!bar || !targets.length || !('IntersectionObserver' in window)) return;
+  const on = new Set();
+  const io = new IntersectionObserver(es => {
+    es.forEach(e => (e.isIntersecting && e.intersectionRatio >= (e.target.id === 'contact' ? 0.25 : 0)) ? on.add(e.target) : on.delete(e.target));
+    bar.classList.toggle('is-away', on.size > 0);
+  }, { threshold: [0, 0.25] });
+  targets.forEach(t => io.observe(t));
 })();
 
 // FAQ chat accordion: one answer open at a time, click the open one to close it
@@ -748,7 +755,7 @@ document.querySelectorAll('[data-stack]').forEach(wrap => {
   const AUTO = ['.why-head', '.ex-tabs', '.ex-sets', '.pr-step', '.pr-cta', '.dr3-art', '.dr3-photo', '.dr3-panel',
     '.pp-rail', '.igp-head', '.igp-rail', '.igp-foot', '.visit-info', '.visit-map', '.rvs-wrap', '.faq-head',
     '.faq-help', '.cf-left', '.cf-right', 'footer.footer'];
-  const GROUPS = ['.why-cards', '.ab3-cards', '.dr3-tiles', '.visit-list', '.cf-rows', '.faq-chat'];   // children rise one after another
+  const GROUPS = ['.why-cards', '.ab3-cards', '.dr3-tiles', '.visit-list', '.cf-rows', '.faq-chat', '.sf-main'];   // children rise one after another
   const seen = new Set(document.querySelectorAll('.reveal'));
   document.querySelectorAll(AUTO.join(',')).forEach(el => { if (!seen.has(el) && !el.closest('.reveal')) { el.classList.add('reveal'); seen.add(el); } });
   document.querySelectorAll(GROUPS.join(',')).forEach(g => {
@@ -1035,4 +1042,24 @@ document.querySelectorAll('[data-stack]').forEach(wrap => {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   addEventListener('pageshow', e => { if (e.persisted) refresh(); });
   addEventListener('storage', e => { if (e.key === KEY) render(); });
+})();
+
+// Footer: current year, WhatsApp link, live "Open now / Closed" from clinic hours (India time)
+(() => {
+  document.querySelectorAll('[data-year]').forEach(el => { el.textContent = new Date().getFullYear(); });
+  document.querySelectorAll('[data-wa]').forEach(a => { a.href = waLink('Hi SHEroots, I would like to know more.'); });
+  const el = document.querySelector('[data-open-status]');
+  if (!el) return;
+  const SLOTS = [[9 * 60, 13 * 60], [17 * 60, 21 * 60]];          // open every day
+  const fmt = m => { const h = Math.floor(m / 60), mm = m % 60; return ((h + 11) % 12 + 1) + (mm ? ':' + String(mm).padStart(2, '0') : '') + (h < 12 ? ' AM' : ' PM'); };
+  const update = () => {
+    const ist = new Date(Date.now() + (new Date().getTimezoneOffset() + 330) * 60000);
+    const now = ist.getHours() * 60 + ist.getMinutes();
+    const cur = SLOTS.find(([o, c]) => now >= o && now < c);
+    const next = SLOTS.find(([o]) => now < o) || SLOTS[0];
+    el.className = 'sf-status' + (cur ? ' is-open' : '');
+    el.textContent = cur ? 'Open now, until ' + fmt(cur[1]) : 'Closed now, opens ' + (now < next[0] ? '' : 'tomorrow ') + 'at ' + fmt(next[0]);
+    el.hidden = false;
+  };
+  update(); setInterval(update, 60000);
 })();

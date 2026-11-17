@@ -27,16 +27,6 @@ main_of = lambda n: open(os.path.join(PAGES_DIR, n + '.main.html'), encoding='ut
 photo = lambda n: os.path.exists(ROOT + 'images/photos/' + n + '.webp')
 TRUST_BLOCK = re.search(r'    <section class="trust".*?</section>\n', main_of('index'), re.S).group(0)
 
-GREVIEWS = '''    <section class="greviews" aria-label="Patient reviews on Google" hidden>
-      <div class="wrap gr-in">
-        <div class="gr-left">
-          <span class="gr-g" aria-hidden="true">G</span>
-          <div><strong>Patient reviews on Google</strong><span class="gr-rating"></span></div>
-        </div>
-        <div class="gr-actions"></div>
-      </div>
-    </section>
-'''
 CTA = '''    <section class="cta-band">
       <div class="wrap cta-in">
         <div><h2>Ready to feel better?</h2><p>Book a session and let's build your recovery plan together.</p></div>
@@ -70,10 +60,86 @@ def header(active, base=''):
   </header>
 '''
 
-def footer():
-    return '''<footer class="footer foot-credit">
-    <p>Crafted by <strong>Zolvminds</strong></p>
-  </footer>'''
+FOOT_SERVICES = ['pelvic-floor', 'pregnancy-care', 'postnatal-care', 'diastasis-recti', 'pcos-pcod',
+                 'back-pain-sciatica', 'neck-pain', 'knee-pain']
+IG_URL = 'https://www.instagram.com/sherootsphysiotherapy_clinic/'
+MAP_URL = 'https://www.google.com/maps?cid=15464404039475393364'
+_svg = lambda d, extra='': f'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"{extra}><path d="{d}"/></svg>'
+IC_IG = _svg('M7.5 2h9A5.5 5.5 0 0122 7.5v9a5.5 5.5 0 01-5.5 5.5h-9A5.5 5.5 0 012 16.5v-9A5.5 5.5 0 017.5 2zm0 2A3.5 3.5 0 004 7.5v9A3.5 3.5 0 007.5 20h9a3.5 3.5 0 003.5-3.5v-9A3.5 3.5 0 0016.5 4h-9zM12 7a5 5 0 110 10 5 5 0 010-10zm0 2a3 3 0 100 6 3 3 0 000-6zm5.25-3.25a1.25 1.25 0 110 2.5 1.25 1.25 0 010-2.5z')
+IC_WA = _svg('M12 2a10 10 0 00-8.6 15.1L2 22l5-1.3A10 10 0 1012 2zm0 18a8 8 0 01-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1112 20zm4.4-6c-.2-.1-1.4-.7-1.7-.8s-.4-.1-.5.1-.6.8-.8 1-.3.2-.5.1a6.6 6.6 0 01-3.3-2.9c-.2-.4.2-.4.7-1.3a.4.4 0 000-.4l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 00-.6.3 2.7 2.7 0 00-.9 2 4.7 4.7 0 001 2.5 10.7 10.7 0 004.1 3.6c1.5.7 2.1.7 2.9.6a2.4 2.4 0 001.6-1.1 2 2 0 00.1-1.1c0-.1-.2-.2-.4-.3z')
+IC_MAP = _svg('M15 4l-6-2-7 2.5v17.5l7-2.5 6 2 7-2.5V1.5zM10 4.2l4 1.4v14.2l-4-1.4zM4 5.9l4-1.4v14.2l-4 1.4zm16 12.2l-4 1.4V5.6l4-1.4z')
+
+IC_MAIL = _svg('M4 5h16a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V7a2 2 0 012-2zm0 2v.4l8 5 8-5V7H4zm16 2.75l-7.47 4.67a1 1 0 01-1.06 0L4 9.75V17h16V9.75z')
+IC_PIN = _svg('M12 2a7 7 0 00-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z')
+IC_CLOCK = _svg('M12 2a10 10 0 110 20 10 10 0 010-20zm0 2a8 8 0 100 16 8 8 0 000-16zm1 3v4.6l3.2 3.2-1.4 1.4-3.8-3.8V7h2z')
+
+def footer(base=''):
+    home = base or '#top'
+    svc = ''.join(f'<li><a href="treatments/{sv[0]}.html">{esc(sv[1])}</a></li>'
+                  for slug in FOOT_SERVICES for sv in C.SERVICES if sv[0] == slug)
+    quick = ''.join(f'<li><a href="{h}">{n}</a></li>' for h, n in (
+        (home, 'Home'), (f'{base}#about', 'About us'), (f'{base}#doctor', 'Our doctor'),
+        (f'{base}#explore', 'Treatments'), (f'{base}#faq', 'FAQs'), (f'{base}#visit', 'Visit us'),
+        (f'{base}#contact', 'Book an appointment')))
+    socials = ((IG_URL, '', 'Instagram', IC_IG), ('https://wa.me/', ' data-wa', 'WhatsApp', IC_WA),
+               (MAP_URL, '', 'Google Maps', IC_MAP))
+    row = ''.join(f'<li><a href="{h}"{extra} target="_blank" rel="noopener" data-tip="{lab}" aria-label="{lab} (opens in a new tab)">{ic}</a></li>'
+                  for h, extra, lab, ic in socials)
+    return f"""<footer class="sf">
+    <div class="wrap">
+      <section class="sf-cta" aria-labelledby="sf-cta-h">
+        <div class="sf-cta-copy">
+          <h2 id="sf-cta-h">Questions before you book?</h2>
+          <div class="greviews sf-gr" hidden>
+            <span class="gr-g" aria-hidden="true">G</span>
+            <span class="gr-txt"><strong>Patient reviews on Google</strong><span class="gr-rating"></span></span>
+            <span class="gr-actions"></span>
+          </div>
+        </div>
+        <div class="sf-cta-acts">
+          <a class="sf-btn sf-btn-light" data-call href="tel:{PHONE_TEL}">{PHONE_SVG}Call 99406 62500</a>
+          <a class="sf-btn sf-btn-line" data-wa href="https://wa.me/" target="_blank" rel="noopener">{IC_WA}WhatsApp us</a>
+        </div>
+      </section>
+
+      <div class="sf-main">
+        <div class="sf-brand">
+          <a class="sf-logo" href="{home}" aria-label="SHEroots Physiotherapy Clinic home">
+            <img src="images/logo-left.webp" width="483" height="500" alt="" loading="lazy">
+            <span><strong>SHEroots</strong><small>Physiotherapy Clinic</small></span>
+          </a>
+          <p class="sf-about">A women-first physiotherapy clinic in Madurai, led by Dr.&nbsp;Chitra Karthick. Gentle, hands-on care for everyday pain, pregnancy, life after birth and every stage in between.</p>
+          <div class="sf-follow">
+            <p class="sf-label" id="sf-follow-h">Follow us on</p>
+            <ul class="sf-social" aria-labelledby="sf-follow-h">{row}</ul>
+          </div>
+        </div>
+        <nav class="sf-col" aria-labelledby="sf-svc-h">
+          <h3 id="sf-svc-h">Services</h3>
+          <ul class="sf-links">{svc}</ul>
+          <a class="sf-all" href="{base}#explore">View all treatments <i aria-hidden="true">&rarr;</i></a>
+        </nav>
+        <nav class="sf-col sf-qh" aria-labelledby="sf-quick-h">
+          <h3 id="sf-quick-h">Quick links</h3>
+          <ul class="sf-links">{quick}</ul>
+        </nav>
+        <div class="sf-col sf-reach">
+          <h3>Contact &amp; hours</h3>
+          <ul class="sf-info">
+            <li><span class="sf-ic">{PHONE_SVG}</span><span><a data-call href="tel:{PHONE_TEL}">+91 99406 62500</a></span></li>
+            <li><span class="sf-ic">{IC_MAIL}</span><span><a href="mailto:sherootsphysio@gmail.com">sherootsphysio@gmail.com</a></span></li>
+            <li><span class="sf-ic">{IC_PIN}</span><span><a href="{MAP_URL}" target="_blank" rel="noopener">No.3, Kamarajar 3rd Cross St, Chinna Chokkikulam, Madurai 625002</a></span></li>
+            <li class="sf-hrs"><span class="sf-ic">{IC_CLOCK}</span><span>Mon &ndash; Sun &middot; 9:00 AM &ndash; 1:00 PM<br>and 5:00 PM &ndash; 9:00 PM<em class="sf-status" data-open-status hidden></em></span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="sf-bottom">
+        <p>&copy; <span data-year>2026</span> SHEroots Physiotherapy Clinic. All rights reserved.</p>
+        <p>Crafted by <a class="sf-zolv" href="https://www.zolvminds.com/" target="_blank" rel="noopener">Zolvminds</a></p>
+      </div>
+    </div>
+  </footer>"""
 
 def mobile_bar(base=''):
     return f'''<nav class="mobile-bar" aria-label="Quick actions">
@@ -110,10 +176,6 @@ def finalize(html):
 
 def page(fname, title, desc, main, active, depth=0, extra_head=''):
     main = main.rstrip() + '\n'
-    if '<section class="cta-band">' in main:
-        main = main.replace('    <section class="cta-band">', GREVIEWS + '\n    <section class="cta-band">', 1)
-    else:
-        main += '\n' + GREVIEWS
     root_attr = '../' * depth
     base = '/' if depth else ''
     html = f'''<!DOCTYPE html>
@@ -139,7 +201,7 @@ def page(fname, title, desc, main, active, depth=0, extra_head=''):
 {main}
   </main>
 
-  {footer()}
+  {footer(base)}
 
   {mobile_bar(base)}
 
