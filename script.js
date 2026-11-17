@@ -8,8 +8,9 @@ const CLINIC_PHONE = '+919940662500';
 document.querySelectorAll('[data-call]').forEach(a => {
   if (!CLINIC_PHONE) return;
   a.setAttribute('href', 'tel:' + CLINIC_PHONE.replace(/[^+\d]/g, ''));
+  // the number is already in the HTML (good for Google); only fill it if a button was left empty
   const n = a.querySelector('.call-num');
-  if (n) n.textContent = CLINIC_PHONE;
+  if (n && !n.textContent.trim()) n.textContent = CLINIC_PHONE.replace(/^\+91(\d{5})(\d{5})$/, '$1 $2');
 });
 
 // Header: compact + shadow after the visitor starts scrolling
@@ -34,6 +35,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(fals
 
 // Booking form: there is no server, so it opens a ready-to-send email to the clinic
 const CLINIC_EMAIL = 'sherootsphysio@gmail.com';
+// Clinic WhatsApp (country code + number, digits only). Used by the form and the chat bot.
+window.SHE_WA = '919025603429';
+window.waLink = text => 'https://wa.me/' + window.SHE_WA + '?text=' + encodeURIComponent(text);
 const form = document.getElementById('bookForm');
 const note = document.getElementById('formNote');
 // Phone field: digits only, never more than 10 (also cleans pasted text such as "+91 98765-43210")
@@ -54,7 +58,9 @@ if (form) form.addEventListener('submit', e => {
   });
   const ph = form.querySelector('[name="phone"]');
   if (ph && ph.value.length !== 10) { ph.classList.add('invalid'); ph.focus(); note.textContent = 'Please enter a 10-digit phone number.'; return; }
-  if (!ok) { note.textContent = 'Please fill in your name, phone number, date and time.'; return; }
+  if (!ok) { note.textContent = 'Please fill in your name, phone number, email, date and time.'; return; }
+  const em = form.querySelector('[name="email"]');
+  if (em && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(em.value.trim())) { em.classList.add('invalid'); em.focus(); note.textContent = 'Please check your email address. Your confirmation is sent there.'; return; }
   const d = Object.fromEntries(new FormData(form));
   const fmtDate = v => { const x = new Date(v + 'T00:00'); return isNaN(x) ? v : x.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); };
   const fmtTime = v => { const [h, m] = v.split(':').map(Number); return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + (h >= 12 ? ' PM' : ' AM'); };
@@ -63,9 +69,73 @@ if (form) form.addEventListener('submit', e => {
   const subj = 'Appointment request: ' + d.service + ', ' + fmtDate(d.date) + ' ' + fmtTime(d.time);
   const gmail = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(CLINIC_EMAIL) + '&su=' + encodeURIComponent(subj) + '&body=' + body;
   const mailto = 'mailto:' + CLINIC_EMAIL + '?subject=' + encodeURIComponent(subj) + '&body=' + body;
-  note.innerHTML = 'Gmail is opening in a new tab. Press <b>Send</b> there to book. <a href="' + mailto + '">Use my mail app (Outlook etc.) instead</a>, or call 99406 62500.';
-  window.open(gmail, '_blank', 'noopener');
+  const btn = form.querySelector('[type="submit"]'), label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  note.classList.remove('ok'); note.textContent = '';
+  const first = String(d.name).trim().split(' ')[0];
+  fetch('/api/book', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: d.name, phone: d.phone, email: d.email || '', concern: d.service, date: d.date, time: d.time, note: d.message || '', source: 'form', website: d.website || '' }) })
+    .then(r => r.json().then(j => ({ code: r.status, j }))).catch(() => ({ code: 0, j: {} }))
+    .then(({ code, j }) => {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      if (code === 200 && j.ok) {
+        note.classList.add('ok');
+        // Clear "what happens next" card (all text set with textContent, never HTML from input)
+        const mk = (tag, cls, txt) => { const x = document.createElement(tag); if (cls) x.className = cls; if (txt) x.textContent = txt; return x; };
+        const card = mk('div', 'bk-done');
+        const top = mk('div', 'bk-done-top'); top.append(mk('strong', '', 'Request sent, ' + first + '! ✅'));
+        if (j.ref) top.append(mk('span', 'bk-done-ref', 'Ref: ' + j.ref));
+        card.append(top, mk('p', 'bk-done-when', d.service + ' · ' + fmtDate(d.date) + ', ' + fmtTime(d.time)));
+        const ol = mk('ol', 'bk-done-steps');
+        [['Clinic reviews your request', 'Usually within a few hours during clinic time.'],
+         ['You get the confirmation', 'By email to ' + d.email + ', on WhatsApp or a call on ' + d.phone + ', and here on the website under "Track my request".'],
+         ['Come to your session', 'Arrive 10 minutes early, in comfortable clothes, with any scan reports.']]
+          .forEach(([t, s]) => { const li = mk('li'); li.append(mk('b', '', t), mk('span', '', s)); ol.append(li); });
+        card.append(ol);
+        const acts = mk('div', 'bk-done-acts');
+        // WhatsApp the clinic too: opens WhatsApp with the request typed out, so the clinic sees it at once
+        const waMsg = ['Hi SHEroots, I just sent a booking request on your website' + (j.ref ? ' (Ref: ' + j.ref + ')' : '') + '.'].concat(lines).join('\n');
+        const w = mk('a', 'wa-btn bk-done-wa', 'Also send on WhatsApp (faster reply)'); w.href = waLink(waMsg); w.target = '_blank'; w.rel = 'noopener'; acts.append(w);
+        if (j.status_url) { const a = mk('a', 'bk-done-track', 'Track my request →'); a.href = j.status_url; a.setAttribute('data-track-open', ''); acts.append(a); }
+        const cl = mk('a', '', 'Need it sooner? Call 99406 62500'); cl.href = 'tel:+919940662500'; acts.append(cl);
+        card.append(acts, mk('p', 'bk-done-tip', 'Tip: save or screenshot this, so you have your reference.'));
+        note.replaceChildren(card);
+        if (window.sheRememberBooking) window.sheRememberBooking(j);
+        form.reset(); refreshSlots();
+        return;
+      }
+      if (code === 409) {
+        refreshSlots();
+        const alts = (j.alternatives || []).map(x => x.label).join(', ');
+        note.textContent = 'Sorry, that time was just booked by someone else. Please pick another time.' + (alts ? ' Nearest free times: ' + alts + '.' : '');
+        return;
+      }
+      if (code === 422) { note.textContent = j.error === 'email' ? 'Please enter a valid email address. Your confirmation is sent there.' : 'Please check your details and try again.'; return; }
+      note.innerHTML = 'Sorry, we could not send this automatically. <a href="' + gmail + '" target="_blank" rel="noopener">Send it with Gmail</a>, <a href="' + mailto + '">use your mail app</a>, or call 99406 62500.';
+      const wa = document.createElement('a'); wa.className = 'wa-btn'; wa.target = '_blank'; wa.rel = 'noopener'; wa.textContent = 'Send on WhatsApp';
+      wa.href = waLink(['Hi SHEroots, I would like to book an appointment.'].concat(lines).join('\n'));
+      note.appendChild(document.createTextNode(' ')); note.appendChild(wa);
+    });
 });
+
+// Booking form: mark times that are already booked for the chosen day
+function refreshSlots() {
+  if (!form) return;
+  const date = form.querySelector('[name="date"]'), sel = form.querySelector('select[name="time"]');
+  if (!date || !sel) return;
+  [...sel.options].forEach(o => { if (o.value) { o.disabled = false; o.textContent = o.textContent.replace(/ · .*$/, ''); } });
+  if (!date.value) return;
+  fetch('/api/slots?date=' + date.value).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j) return;
+    const map = Object.fromEntries(j.slots.map(x => [x.time, x]));
+    [...sel.options].forEach(o => {
+      const x = map[o.value]; if (!x || x.free) return;
+      o.disabled = true; o.textContent += x.past ? ' · not available' : ' · booked';
+      if (sel.value === o.value) sel.value = '';
+    });
+  }).catch(() => {});
+}
+if (form) { const dt = form.querySelector('[name="date"]'); if (dt) dt.addEventListener('change', refreshSlots); }
 
 // In-page links: picking a treatment opens it in the treatment picker; "Book" buttons pre-select the treatment
 document.addEventListener('click', e => {
@@ -93,40 +163,29 @@ const yr = document.getElementById('yr'); if (yr) yr.textContent = new Date().ge
 
 // ---- Trust strip: shown under the hero (Home) and on every other page ----
 // Add ONLY real, verifiable items. Anything left empty stays hidden.
-//
-// AHPRA: Australian physiotherapists must be registered. Put the registration number
-// (format PHY0000000000) so patients can verify it on the public AHPRA register.
-const AHPRA_NUMBER = '';           // e.g. 'PHY0001234567'
-const AHPRA_NAME   = '';           // optional: practitioner name as on the register
 
 const TRUST = {
   credentials: [],  // degrees, certifications, years of experience
   clubs:       [],  // sporting clubs / teams / academies you work with
-  health:      [],  // private health funds / memberships accepted (HICAPS, etc.)
-  others:      []   // awards, associations (e.g. Australian Physiotherapy Association), partners
+  others:      []   // awards, associations (e.g. Indian Association of Physiotherapists), partners
 };
 // Text: 'Bachelor of Physiotherapy'   Logo: { name: 'Club name', logo: 'images/trust/club.webp' }
 
 const TRUST_SAMPLE = {   // shown only at ?preview
   credentials: ['Sample credential one', 'Sample credential two'],
   clubs:       ['Sample sports club'],
-  health:      ['Sample health fund'],
   others:      ['Sample association']
 };
 const TRUST_GROUPS = [
   { key: 'credentials', title: 'Credentials',                icon: 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm-1.2 13.6l5.6-5.6-1.4-1.4-4.2 4.2-2-2-1.4 1.4 3.4 3.4z' },
   { key: 'clubs',       title: 'Sporting clubs',             icon: 'M7 3h10v2h3v3a4 4 0 01-4 4h-.3A5 5 0 0113 15.9V18h3v3H8v-3h3v-2.1A5 5 0 018.3 12H8a4 4 0 01-4-4V5h3V3zm-1 4v1a2 2 0 002 2V7H6zm12 0h-2v3a2 2 0 002-2V7z' },
-  { key: 'health',      title: 'Private health memberships', icon: 'M12 21s-7-4.4-9.3-9A5.4 5.4 0 0112 6a5.4 5.4 0 019.3 6c-2.3 4.6-9.3 9-9.3 9zm-1-11v2H9v2h2v2h2v-2h2v-2h-2v-2h-2z' },
   { key: 'others',      title: 'Also recognised by',         icon: 'M12 2l3 6.5 7 .9-5.1 4.9 1.3 7-6.2-3.4L5.8 21l1.3-7L2 9.4l7-.9L12 2z' }
 ];
-const AHPRA_REGISTER = 'https://www.ahpra.gov.au/Registration/Registers-of-Practitioners.aspx';
-const SHIELD = 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm-1.2 13.6l5.6-5.6-1.4-1.4-4.2 4.2-2-2-1.4 1.4 3.4 3.4z';
 
 (function renderTrust() {
   const sections = document.querySelectorAll('.trust');
   const preview = new URLSearchParams(location.search).has('preview');
   const data = preview ? TRUST_SAMPLE : TRUST;
-  const ahpraNo = preview ? 'PHY0000000000' : AHPRA_NUMBER;
   const ns = 'http://www.w3.org/2000/svg';
   const icon = d => {
     const s = document.createElementNS(ns, 'svg');
@@ -137,23 +196,8 @@ const SHIELD = 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm-1.2 13.6l5
 
   sections.forEach(sec => {
     const grid = sec.querySelector('.trust-grid');
-    const box = sec.querySelector('.ahpra');
     const more = sec.querySelector('.trust-more');
     let shown = 0;
-
-    if (ahpraNo) {
-      shown++;
-      const txt = document.createElement('div');
-      const t = document.createElement('strong'); t.textContent = 'Registered with AHPRA';
-      const sub = document.createElement('span');
-      sub.textContent = (AHPRA_NAME && !preview ? AHPRA_NAME + ' · ' : '') + 'Physiotherapist · Registration no. ' + ahpraNo;
-      txt.append(t, sub);
-      const a = document.createElement('a');
-      a.href = AHPRA_REGISTER; a.target = '_blank'; a.rel = 'noopener noreferrer';
-      a.textContent = 'Verify on the public register ↗';
-      box.append(icon(SHIELD), txt, a);
-      box.hidden = false;
-    }
 
     TRUST_GROUPS.forEach(g => {
       const items = data[g.key] || [];
@@ -182,12 +226,6 @@ const SHIELD = 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm-1.2 13.6l5
     sec.hidden = false;
     if (preview) sec.querySelector('.trust-preview').hidden = false;
   });
-
-  // Footer registration line
-  if (ahpraNo && !preview) {
-    const f = document.querySelector('.footer .foot');
-    if (f) { const p = document.createElement('p'); p.className = 'foot-reg'; p.textContent = 'AHPRA registration no. ' + ahpraNo; f.appendChild(p); }
-  }
 })();
 
 
@@ -196,11 +234,9 @@ const SHIELD = 'M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3zm-1.2 13.6l5
 //  GOOGLE_REVIEWS_URL      -> your profile / reviews page
 //  GOOGLE_WRITE_REVIEW_URL -> the "write a review" link (Google Business Profile > Get more reviews)
 //  GOOGLE_RATING / COUNT   -> optional, e.g. 4.9 and 120. Only enter REAL figures.
-// AHPRA: its advertising rules restrict patient testimonials by registered practitioners, so this block
-// links OUT to Google and never copies or quotes review text onto the site. Confirm the rating line is
-// acceptable with AHPRA / your professional association before filling GOOGLE_RATING.
-const GOOGLE_REVIEWS_URL = '';
-const GOOGLE_WRITE_REVIEW_URL = '';
+// This block links OUT to Google and never copies review text onto the site.
+const GOOGLE_REVIEWS_URL = 'https://www.google.com/maps?cid=15464404039475393364';
+const GOOGLE_WRITE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJJRxpkxTFADsRVPMLPIqZnNY';
 const GOOGLE_RATING = '';
 const GOOGLE_COUNT = '';
 
@@ -323,9 +359,9 @@ const GOOGLE_COUNT = '';
     sets.forEach((el, k) => { el.hidden = k !== g; });
   };
   tabs.forEach((t, g) => t.addEventListener('click', () => show(g)));
-  const body = dlg.querySelector('.ex-dbody'), count = dlg.querySelector('.ex-dcount');
+  const body = dlg.querySelector('.ex-dbody');
   const panels = [...document.querySelectorAll('.ex-panel')]; let cur = 0;
-  const render = i => { cur = (i + panels.length) % panels.length; body.innerHTML = panels[cur].innerHTML; count.textContent = (cur + 1) + ' / ' + panels.length; dlg.scrollTop = 0; };
+  const render = i => { cur = (i + panels.length) % panels.length; body.innerHTML = panels[cur].innerHTML; dlg.scrollTop = 0; };
   const open = i => { if (i < 0) return; render(i); if (!dlg.open) dlg.showModal(); };
   document.querySelector('.ex-sets').addEventListener('click', e => { const c = e.target.closest('.ex-item'); if (c) open(panels.findIndex(p => p.dataset.slug === c.dataset.slug)); });
   dlg.querySelector('[data-ex-close]').addEventListener('click', () => dlg.close());
@@ -350,12 +386,6 @@ const GOOGLE_COUNT = '';
     const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { fn(e.target); io.unobserve(e.target); } }), { threshold: th });
     els.forEach(el => io.observe(el));
   };
-
-  // scroll progress bar
-  const bar = document.createElement('div'); bar.className = 'progress'; bar.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(bar);
-  const setBar = () => { const m = document.documentElement.scrollHeight - innerHeight; bar.style.transform = `scaleX(${m > 0 ? clamp(scrollY / m) : 0})`; };
-  addEventListener('scroll', setBar, { passive: true }); setBar();
 
   // hero: layers follow the cursor
   const hero = document.querySelector('.hv');
@@ -410,7 +440,21 @@ const GOOGLE_COUNT = '';
 (() => {
   const v = document.querySelector('.hvi-vid'); if (!v) return;
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { v.pause(); return; }
-  const start = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+  // The video file is large: attach it only after the page has loaded (poster shows until then),
+  // and skip it entirely when the visitor has Data Saver on.
+  const conn = navigator.connection;
+  if (conn && conn.saveData) return;
+  let loaded = !v.dataset.src;
+  const start = () => { if (!loaded) return; const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+  const attach = () => {
+    if (loaded) return; loaded = true;
+    // Phones in portrait get a full-resolution 9:16 cut of the same video (smaller file, same sharpness)
+    const phone = v.dataset.srcM && matchMedia('(max-width: 820px) and (orientation: portrait)').matches;
+    if (phone) v.classList.add('is-m');
+    v.src = phone ? v.dataset.srcM : v.dataset.src; v.preload = 'auto'; v.load(); start();
+  };
+  if (document.readyState === 'complete') setTimeout(attach, 300);
+  else addEventListener('load', () => setTimeout(attach, 300), { once: true });
   v.addEventListener('playing', () => v.classList.add('is-playing'));
   v.addEventListener('canplay', start);
   v.addEventListener('error', () => v.classList.remove('is-playing'));   // poster stays visible
@@ -490,7 +534,8 @@ const GOOGLE_COUNT = '';
   const update = () => {
     const r = pills.getBoundingClientRect(), H = innerHeight;
     if (r.bottom < -50 || r.top > H + 50) return;
-    const p = clamp(-r.top / (r.height - H));
+    const lead = H * 0.55;   // pills start settling while the section is still coming into view, so the heading never sits alone
+    const p = clamp((lead - r.top) / (r.height - H + lead));
     pl.forEach((el, i) => {
       const t = ease(clamp((p - 0.04 - i * 0.05) / 0.16));
       el.style.opacity = t;
@@ -642,7 +687,7 @@ document.addEventListener('click', e => {
   stage.addEventListener('click', e => { if (rowMode()) return; const c = e.target.closest('.stg-card'); if (c) move(+c.dataset.pos); });
   stage.addEventListener('keydown', e => { if (rowMode()) return; const c = e.target.closest('.stg-card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); move(+c.dataset.pos); } });
   nav.children[0].addEventListener('click', () => move(-1)); nav.children[2].addEventListener('click', () => move(1));
-  const mq = matchMedia('(min-width: 640px)'), size_ = () => { size = mq.matches ? 365 : 290; render(); };
+  const mq = matchMedia('(min-width: 640px)'), size_ = () => { size = mq.matches ? 365 : Math.min(320, innerWidth - 44); render(); };
   addEventListener('resize', size_); size_(); syncRow();
 })();
 
@@ -774,7 +819,7 @@ document.querySelectorAll('[data-stack]').forEach(wrap => {
 /* ===== Scroll motion kit: a different kind of scroll animation for each part of the page =====
    words rise in headings · slide from left / right · zoom · blur-to-sharp · 3D flip · wipe (mask)
    cards that rise one by one · scroll-linked zoom of photos · parallax drift of icons · growing kicker lines
-   · page progress bar. Everything is switched off for people who prefer reduced motion. */
+. Everything is switched off for people who prefer reduced motion. */
 (() => {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -822,13 +867,11 @@ document.querySelectorAll('[data-stack]').forEach(wrap => {
   const zoomers = $$('.pr-img, .dr3-photo, .visit-map, .cf-card, .stg').map(el => ({ el, from: el.matches('.dr3-photo') ? 0.9 : 0.86 }));
   const drifters = $$('.why-cards img, .ab3-ic img, .pp-ph').map(el => ({ el, amp: el.matches('.pp-ph') ? 10 : 16 }));
   const lines = $$('.kicker i, .why-k i, .ab3-k i, .ab3-k::before').filter(Boolean);
-  const bar = document.createElement('div'); bar.className = 'progress'; bar.setAttribute('aria-hidden', 'true'); document.body.appendChild(bar);
   const pending = new Set(heads.concat($$('.split')));
   let queued = false;
   const frame = () => {
     queued = false;
     const H = innerHeight, max = document.documentElement.scrollHeight - H;
-    bar.style.transform = 'scaleX(' + (max > 0 ? clamp(scrollY / max) : 0).toFixed(4) + ')';
     const atEnd = scrollY + H >= document.documentElement.scrollHeight - 4;
     pending.forEach(h => { if (atEnd || h.getBoundingClientRect().top < H * 0.9) { h.classList.add('in'); pending.delete(h); } });
     zoomers.forEach(z => {
@@ -849,4 +892,147 @@ document.querySelectorAll('[data-stack]').forEach(wrap => {
   const req = () => { if (!queued) { queued = true; requestAnimationFrame(frame); } };
   addEventListener('scroll', req, { passive: true }); addEventListener('resize', req); addEventListener('load', req);
   frame(); setTimeout(req, 500);
+})();
+
+/* ===== "Track my request": the visitor's own browser remembers their booking requests. A tab on the
+   left edge opens a panel with the live status of each one (checked again every 30 seconds while the
+   page is open), and a note pops up as soon as the clinic confirms or declines. Patients on another
+   phone/browser can find their booking with the reference + phone number. ===== */
+(function myBooking() {
+  const KEY = 'sheBookings', POLL = 30000;
+  const read = () => { try { const l = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } };
+  const write = list => { try { localStorage.setItem(KEY, JSON.stringify(list.slice(-5))); } catch (e) {} };
+  const mk = (tag, cls, txt) => { const x = document.createElement(tag); if (cls) x.className = cls; if (txt != null) x.textContent = txt; return x; };
+  const today = () => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; };
+  const LABEL = { pending: 'Waiting for confirmation', confirmed: 'Confirmed', declined: 'Not available', cancelled: 'Cancelled' };
+  const NEWS = {
+    pending: s => 'Your booking request for ' + s.when + ' has reached the clinic. We will confirm it with you shortly.',
+    confirmed: s => 'Your appointment on ' + s.when + ' is confirmed. We look forward to seeing you.',
+    declined: s => 'We could not confirm ' + s.when + '. Please choose another time.',
+    cancelled: s => 'Your booking for ' + s.when + ' was cancelled.'
+  };
+  const apiOf = b => b.url.replace('/api/b/', '/api/s/');
+
+  // forget appointments whose day has passed
+  write(read().filter(b => b && b.ref && b.url && (!b.date || new Date(b.date + 'T00:00') >= today())));
+
+  /* ---- side tab + panel ---- */
+  const tab = mk('button', 'trk-tab'); tab.type = 'button'; tab.setAttribute('aria-haspopup', 'dialog'); tab.setAttribute('aria-controls', 'trkPanel');
+  tab.append(mk('span', 'trk-tab-txt', 'Track my request'), mk('span', 'trk-dot'));
+  const panel = mk('div', 'trk-panel'); panel.id = 'trkPanel'; panel.hidden = true;
+  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'false'); panel.setAttribute('aria-labelledby', 'trkTitle');
+  const head = mk('div', 'trk-head'); const h = mk('h2', '', 'Track my request'); h.id = 'trkTitle';
+  const close = mk('button', 'trk-x', '×'); close.type = 'button'; close.setAttribute('aria-label', 'Close');
+  head.append(h, close);
+  const listEl = mk('div', 'trk-list');
+  const find = mk('form', 'trk-find'); find.noValidate = true;
+  find.innerHTML = '<p class="trk-find-h">Booked on another phone or browser?</p>' +
+    '<label>Booking reference<input name="ref" autocomplete="off" placeholder="e.g. SHE-261117-AB12CD" required></label>' +
+    '<label>Phone number<input name="phone" inputmode="numeric" autocomplete="tel" maxlength="14" placeholder="10-digit mobile" required></label>' +
+    '<button type="submit" class="btn">Find my booking</button><p class="trk-find-note" role="status"></p>';
+  panel.append(head, listEl, find);
+  document.body.append(tab, panel);
+
+  const openPanel = () => { if (bar) bar.querySelector('.mybk-x').click(); const chatX = document.querySelector('.chat.open .chat-close'); if (chatX) chatX.click(); panel.hidden = false; tab.setAttribute('aria-expanded', 'true'); tab.classList.remove('has-news'); requestAnimationFrame(() => panel.classList.add('in')); render(); refresh(); close.focus(); };
+  const closePanel = () => { panel.classList.remove('in'); tab.setAttribute('aria-expanded', 'false'); setTimeout(() => { if (!panel.classList.contains('in')) panel.hidden = true; }, 250); };
+  tab.addEventListener('click', () => panel.hidden ? openPanel() : closePanel());
+  close.addEventListener('click', () => { closePanel(); tab.focus(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !panel.hidden) { closePanel(); tab.focus(); } });
+  document.addEventListener('click', e => { if (!panel.hidden && !panel.contains(e.target) && !tab.contains(e.target) && !e.target.closest('.mybk')) closePanel(); });
+  document.addEventListener('click', e => { const a = e.target.closest('[data-track-open]'); if (a) { e.preventDefault(); openPanel(); } });
+  window.sheOpenTracker = openPanel;
+
+  function render() {
+    const list = read().slice().reverse();
+    listEl.replaceChildren();
+    tab.classList.toggle('has-items', list.length > 0);
+    tab.hidden = !list.length;      // the side tab appears only once this browser has a booking
+    if (!list.length) { listEl.append(mk('p', 'trk-empty', 'When you send a booking request on this site, its status shows up here, so you can see the moment the clinic confirms it.')); return; }
+    list.forEach(b => {
+      const st = b.st || 'pending';
+      const card = mk('div', 'trk-card trk-' + st);
+      const top = mk('div', 'trk-card-top'); top.append(mk('span', 'trk-pill', LABEL[st] || st), mk('span', 'trk-ref', b.ref));
+      card.append(top, mk('p', 'trk-when', (b.when || b.date || '') + (b.concern ? ' · ' + b.concern : '')));
+      if (st === 'pending') card.append(mk('p', 'trk-sub', 'The clinic will confirm by WhatsApp or a call. This updates by itself.'));
+      const acts = mk('div', 'trk-acts');
+      if (st === 'declined' || st === 'cancelled') { const a = mk('a', '', 'Book another time'); a.href = SITE_ROOT + 'index.html#contact'; a.addEventListener('click', closePanel); acts.append(a); }
+      const v = mk('a', '', st === 'pending' || st === 'confirmed' ? 'View or cancel' : 'View details'); v.href = b.url; v.target = '_blank'; v.rel = 'noopener'; acts.append(v);
+      if (st === 'declined' || st === 'cancelled') { const rm = mk('button', 'trk-rm', 'Remove'); rm.type = 'button'; rm.addEventListener('click', () => { write(read().filter(y => y.ref !== b.ref)); render(); }); acts.append(rm); }
+      card.append(acts);
+      listEl.append(card);
+    });
+  }
+
+  /* ---- pop-up note when the status changes ---- */
+  let bar = null;
+  function notify(b, s) {
+    const text = NEWS[s.status]; if (!text) return;
+    if (bar) bar.remove();
+    bar = mk('div', 'mybk mybk-' + s.status); bar.setAttribute('role', 'status');
+    const go = mk('button', 'mybk-go', s.status === 'declined' ? 'Choose another time' : 'View booking'); go.type = 'button';
+    go.addEventListener('click', () => { dismiss(); if (s.status === 'declined') location.href = SITE_ROOT + 'index.html#contact'; else openPanel(); });
+    const x = mk('button', 'mybk-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Dismiss');
+    const dismiss = () => { tab.classList.remove('has-news'); if (bar) { bar.remove(); bar = null; } write(read().map(y => y.ref === b.ref ? Object.assign(y, { seen: s.status }) : y)); };
+    x.addEventListener('click', dismiss);
+    bar.append(mk('span', 'mybk-pill', LABEL[s.status]), mk('span', 'mybk-msg', text(s)), go, x);
+    document.body.appendChild(bar);
+    requestAnimationFrame(() => bar && bar.classList.add('in'));
+    if (panel.hidden) tab.classList.add('has-news');
+  }
+
+  /* ---- live status ---- */
+  let busy = false;
+  function refresh() {
+    const list = read();
+    if (busy || !list.length || !('fetch' in window)) return render();
+    busy = true;
+    Promise.all(list.map(b => fetch(apiOf(b), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null).then(s => [b, s])))
+      .then(res => {
+        busy = false;
+        let news = null;
+        const cur = read();
+        res.forEach(([b, s]) => {
+          if (!s || !s.ok) return;
+          const y = cur.find(z => z.ref === b.ref); if (!y) return;
+          Object.assign(y, { st: s.status, when: s.when, concern: s.concern, date: s.date });
+          if (y.seen !== s.status) news = [y, s];     // newest booking with unseen news wins
+        });
+        write(cur); render();
+        if (news && !(bar && bar.classList.contains('mybk-' + news[1].status))) notify(news[0], news[1]);
+      });
+  }
+
+  // called by the booking form and the chat assistant after a successful request
+  window.sheRememberBooking = j => {
+    if (!j || !j.ref || !j.status_url) return;
+    write(read().filter(b => b.ref !== j.ref).concat([{ ref: j.ref, url: j.status_url, date: j.date || '', when: j.when || '', concern: j.concern || '', st: j.status || 'pending', seen: 'pending' }]));
+    render(); tab.classList.add('pulse'); setTimeout(() => tab.classList.remove('pulse'), 2400);
+  };
+
+  /* ---- find a booking from another device ---- */
+  const fPhone = find.querySelector('[name="phone"]'), fNote = find.querySelector('.trk-find-note');
+  fPhone.addEventListener('input', () => { let d = fPhone.value.replace(/\D/g, ''); if (d.length > 10 && d.startsWith('91')) d = d.slice(2); fPhone.value = d.slice(0, 10); });
+  find.addEventListener('submit', e => {
+    e.preventDefault();
+    const ref = find.ref.value.trim().toUpperCase().replace(/\s+/g, ''), phone = fPhone.value;
+    if (!/^(SHE-)?\d{6}-[0-9A-F]{6}$/.test(ref) || phone.length !== 10) { fNote.textContent = 'Please enter your reference (like SHE-261117-AB12CD) and the 10-digit phone number you booked with.'; return; }
+    const btn = find.querySelector('button'); btn.disabled = true; fNote.textContent = 'Checking…';
+    fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref, phone }) })
+      .then(r => r.json().then(j => ({ code: r.status, j }))).catch(() => ({ code: 0, j: {} }))
+      .then(({ code, j }) => {
+        btn.disabled = false;
+        if (code === 200 && j.ok) {
+          write(read().filter(b => b.ref !== j.ref).concat([{ ref: j.ref, url: j.status_url, date: j.date, when: j.when, concern: j.concern, st: j.status, seen: j.status }]));
+          find.reset(); fNote.textContent = 'Found it. Its status is shown above.'; render(); listEl.scrollTop = 0; return;
+        }
+        fNote.textContent = code === 404 ? 'We could not find a booking with that reference and phone number. Please check both, or call 99406 62500.'
+          : code === 429 ? 'Too many tries. Please wait a few minutes, or call 99406 62500.' : 'Could not check right now. Please try again, or call 99406 62500.';
+      });
+  });
+
+  render(); refresh();
+  setInterval(() => { if (!document.hidden) refresh(); }, POLL);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  addEventListener('pageshow', e => { if (e.persisted) refresh(); });
+  addEventListener('storage', e => { if (e.key === KEY) render(); });
 })();

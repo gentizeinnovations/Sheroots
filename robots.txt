@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /_build/
+Disallow: /reports/
+Disallow: /api/
+
+Sitemap: https://sheroots.gentize.in/sitemap.xml

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Site content. Edit here, then run:  python _build/build.py
 DRAFT NOTE: the service descriptions are general, conservative information written as a starting
-point. The treating physiotherapist must review them before publishing (AHPRA advertising rules:
+point. The treating physiotherapist must review them before publishing (healthcare advertising rules:
 no guarantees, no testimonials, no misleading claims)."""
 
 # ---- Areas you target: one page per area is generated ONLY for entries here. -------------------

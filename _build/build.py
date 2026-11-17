@@ -6,9 +6,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE) + os.sep
 sys.path.insert(0, HERE)
 import content as C
+import hashlib
+ASSET_V = {f: hashlib.md5(open(ROOT + f, 'rb').read()).hexdigest()[:8] for f in ('styles.css', 'script.js', 'chat.js')}
 
 PAGES_DIR = os.path.join(HERE, 'pages'); os.makedirs(PAGES_DIR, exist_ok=True)
 esc = lambda s: s.replace('&', '&amp;')
+PHONE_TEL = '+919940662500'
 PHONE_SVG = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>'
 
 # ---------- first run: keep the hand-written main content of these pages as sources ----------
@@ -42,23 +45,24 @@ CTA = '''    <section class="cta-band">
     </section>
 '''
 
-def nav_links(active):
+def nav_links(active, base=''):
     items = [('#top', 'Home'), ('#about', 'About'), ('#explore', 'Treatments'), ('#contact', 'Contact')]
-    return ''.join(f'<a href="{h}"' + (' class="active" aria-current="page"' if h == '#top' else '') + f'>{n}</a>' for h, n in items)
+    cur = '#top' if not base else ('#explore' if active.startswith('treatments/') else '')
+    return ''.join(f'<a href="{base}{h}"' + (' class="active" aria-current="page"' if h == cur else '') + f'>{n}</a>' for h, n in items)
 
-def header(active):
+def header(active, base=''):
     return f'''  <header class="site" id="site-header">
     <div class="nav">
-      <a class="brand" href="#top" aria-label="SHEroots Physiotherapy Clinic home">
+      <a class="brand" href="{base or '#top'}" aria-label="SHEroots Physiotherapy Clinic home">
         <img src="images/logo-left.webp" width="483" height="500" alt="SHEroots logo">
         <span class="brand-text"><strong>SHEroots</strong><small>Physiotherapy Clinic</small></span>
       </a>
       <nav class="links" id="menu" aria-label="Main">
-        {nav_links(active)}
-        <a class="btn btn-primary menu-cta" data-call href="#contact">{PHONE_SVG}Call us <b class="call-num"></b></a>
+        {nav_links(active, base)}
+        <a class="btn btn-primary menu-cta" data-call href="tel:+919940662500">{PHONE_SVG}Call us <b class="call-num">99406 62500</b></a>
       </nav>
       <div class="nav-right">
-        <a class="btn btn-primary nav-cta" data-call href="#contact">{PHONE_SVG}Call us</a>
+        <a class="btn btn-primary nav-cta" data-call href="tel:+919940662500">{PHONE_SVG}Call us</a>
         <img class="badge" src="images/logo-right.webp" width="499" height="500" alt="SHEroots badge">
         <button class="burger" aria-label="Open menu" aria-expanded="false" aria-controls="menu"><span></span><span></span><span></span></button>
       </div>
@@ -71,16 +75,38 @@ def footer():
     <p>Crafted by <strong>Zolvminds</strong></p>
   </footer>'''
 
-MOBILE_BAR = f'''<nav class="mobile-bar" aria-label="Quick actions">
-    <a class="mb-call" data-call href="#contact">{PHONE_SVG}<span>Call us</span></a>
-    <a href="#explore"><span>Treatments</span></a>
-    <a href="#contact"><span>Book</span></a>
+def mobile_bar(base=''):
+    return f'''<nav class="mobile-bar" aria-label="Quick actions">
+    <a class="mb-call" data-call href="tel:+919940662500">{PHONE_SVG}<span>Call us</span></a>
+    <a href="{base}#explore"><span>Treatments</span></a>
+    <a href="{base}#contact"><span>Book</span></a>
   </nav>'''
+MOBILE_BAR = mobile_bar()
 
 def prefixize(html, depth):
     if not depth: return html
     pre = '../' * depth
     return re.sub(r'(href|src)="(?!https?:|#|tel:|mailto:|/|data:)([^"]+)"', lambda m: f'{m.group(1)}="{pre}{m.group(2)}"', html)
+
+# ---- final HTML touches, applied to every page ----
+from PIL import Image as _Img
+_dims = {}
+def _size(src):
+    path = ROOT + re.sub(r'^(\.\./)+|^/', '', src.split('?')[0])
+    if path not in _dims:
+        try: _dims[path] = _Img.open(path).size
+        except Exception: _dims[path] = None
+    return _dims[path]
+def _img_dims(m):
+    tag = m.group(0)
+    if re.search(r'\swidth=', tag) or re.search(r'\sheight=', tag): return tag
+    src = re.search(r'\ssrc="([^"]+)"', tag)
+    d = src and not src.group(1).startswith(('http', 'data:')) and _size(src.group(1))
+    return tag.replace('<img ', f'<img width="{d[0]}" height="{d[1]}" ', 1) if d else tag
+def finalize(html):
+    html = re.sub(r'<img\s[^>]*>', _img_dims, html)                          # width/height on every image (no layout jump)
+    html = re.sub(r'data-call href="[^"]*"', f'data-call href="tel:{PHONE_TEL}"', html)  # real phone link in the HTML
+    return html
 
 def page(fname, title, desc, main, active, depth=0, extra_head=''):
     main = main.rstrip() + '\n'
@@ -89,6 +115,7 @@ def page(fname, title, desc, main, active, depth=0, extra_head=''):
     else:
         main += '\n' + GREVIEWS
     root_attr = '../' * depth
+    base = '/' if depth else ''
     html = f'''<!DOCTYPE html>
 <html lang="en" data-root="{root_attr}">
 <head>
@@ -97,28 +124,31 @@ def page(fname, title, desc, main, active, depth=0, extra_head=''):
   <title>{title}</title>
   <meta name="description" content="{desc}">
   <meta name="theme-color" content="#e20c75">
-  <link rel="icon" href="images/logo-right.webp" type="image/webp">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="images/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="images/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
   <script>document.documentElement.classList.add('js')</script>
-  <link rel="stylesheet" href="styles.css">{extra_head}
+  <link rel="stylesheet" href="styles.css?v={ASSET_V['styles.css']}">{extra_head}
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
 
-{header(active)}
+{header(active, base)}
   <main id="main">
 {main}
   </main>
 
   {footer()}
 
-  {MOBILE_BAR}
+  {mobile_bar(base)}
 
-  <script src="script.js"></script>
-  <script src="chat.js" defer></script>
+  <script src="script.js?v={ASSET_V['script.js']}"></script>
+  <script src="chat.js?v={ASSET_V['chat.js']}" defer></script>
 </body>
 </html>
 '''
-    html = prefixize(html, depth)
+    html = finalize(prefixize(html, depth))
     out = ROOT + fname
     os.makedirs(os.path.dirname(out), exist_ok=True)
     open(out, 'w', encoding='utf-8').write(html)
@@ -157,22 +187,21 @@ def explorer():
     FILE = {'core': 'core-physio.png', 'womens': 'womens-health.png'}
     SUB = {'core': 'Pain, joints, movement', 'womens': 'Pregnancy, postnatal, pelvic'}
     groups = [(C.CORE, 'core'), (C.WOMEN, 'womens')]
-    tabs, sets, panels, n = [], [], [], 0
+    tabs, sets, panels = [], [], []
     for gi, (gname, gid) in enumerate(groups):
         cards = []
         for s in C.SERVICES:
             if s[3] != gname: continue
             slug, en, ta, intro = s[0], s[1], s[2], s[4]
-            n += 1
             cards.append(f'<li><button type="button" class="ex-item" data-slug="{slug}" aria-haspopup="dialog">'
-                         f'<span class="ex-th"><img src="images/tx-{slug}.jpg" width="240" height="300" loading="lazy" alt=""></span>'
-                         f'<span class="ex-it"><span class="ex-n">{n:02d}</span><b>{esc(en)}</b><em lang="ta">{ta}</em></span>'
+                         f'<span class="ex-th"><img src="images/tx-{slug}.jpg" width="240" height="300" loading="lazy" decoding="async" alt="{esc(en)} physiotherapy in Madurai"></span>'
+                         f'<span class="ex-it"><b>{esc(en)}</b><em lang="ta">{ta}</em></span>'
                          f'<span class="ex-ar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span>'
                          f'<span class="sr-only">View details</span></button></li>')
             signs = "".join(f"<li>{esc(x)}</li>" for x in s[6])
             helps = "".join(f"<li>{esc(x)}</li>" for x in s[7])
             panels.append(f'''<article class="ex-panel" hidden data-slug="{slug}">
-              <img class="ex-p-img" src="images/tx-{slug}.jpg" alt="{esc(en)}">
+              <img class="ex-p-img" src="images/tx-{slug}.jpg" loading="lazy" decoding="async" alt="{esc(en)} physiotherapy at SHEroots, Madurai">
               <div class="ex-p-main">
                 <p class="ex-p-group">{esc(gname)}</p>
                 <h3>{esc(en)}</h3>
@@ -182,13 +211,13 @@ def explorer():
                   <div><h5>{esc(s[5])}</h5><ul>{signs}</ul></div>
                   <div><h5>How physiotherapy can help</h5><ul>{helps}</ul></div>
                 </div>
-                <a class="btn btn-primary" href="#contact" data-service="{esc(en)}">Book a session <span aria-hidden="true">→</span></a>
+                <div class="ex-p-acts"><a class="btn btn-primary" href="#contact" data-service="{esc(en)}">Book a session <span aria-hidden="true">→</span></a>
+                <a class="ex-p-link" href="treatments/{slug}.html">Read the full guide <span aria-hidden="true">→</span></a></div>
               </div>
             </article>''')
         tabs.append(f'<button type="button" class="ex-tab ex-tab-{gid}{" on" if gi == 0 else ""}" role="tab" aria-selected="{"true" if gi == 0 else "false"}" data-g="{gi}">'
-                    f'<span class="ex-tab-ic" aria-hidden="true"><img src="images/icons/{FILE[gid]}" width="30" height="30" alt=""></span>'
-                    f'<span class="ex-tab-t"><strong>{esc(gname)}</strong><small>{SUB[gid]}</small></span>'
-                    f'<b class="ex-tab-n">{len(cards)}</b></button>')
+                    f'<span class="ex-tab-ic" aria-hidden="true"><img src="images/icons/{FILE[gid]}" width="30" height="30" loading="lazy" decoding="async" alt=""></span>'
+                    f'<span class="ex-tab-t"><strong>{esc(gname)}</strong><small>{SUB[gid]}</small></span></button>')
         sets.append(f'<ul class="ex-set" data-g="{gi}" role="tabpanel"{"" if gi == 0 else " hidden"}>{"".join(cards)}</ul>')
     return f"""<div class="ex-tabs" role="tablist" aria-label="Treatment groups">{"".join(tabs)}</div>
         <div class="ex-sets">{"".join(sets)}</div>
@@ -196,7 +225,7 @@ def explorer():
         <dialog class="ex-dlg" id="exDialog" aria-label="Treatment details">
           <button type="button" class="ex-x" data-ex-close aria-label="Close">&times;</button>
           <div class="ex-dbody"></div>
-          <div class="ex-dnav"><button type="button" data-ex-prev>&#8249; Previous</button><span class="ex-dcount"></span><button type="button" data-ex-next>Next &#8250;</button></div>
+          <div class="ex-dnav"><button type="button" data-ex-prev>&#8249; Previous</button><button type="button" data-ex-next>Next &#8250;</button></div>
         </dialog>"""
 home = home.replace('<!--EXPLORER-->', explorer())
 if photo('hero'):
@@ -220,10 +249,271 @@ if clinic:
 '''
     i = home.index('<div class="wrap why">'); j = home.rfind('<section', 0, i)
     home = home[:j] + gal + home[j:]
-page('index.html', 'SHEroots Physiotherapy Clinic | Expert Physiotherapy &amp; Women\'s Health',
-     'Expert physiotherapy for neck, back, knee and shoulder pain, sports injuries, pelvic health, pregnancy and postnatal care. Open 9 AM to 1 PM and 5 PM to 9 PM.', home, 'index.html')
+# ---------- SEO: canonical, social cards and structured data (JSON-LD) ----------
+import json, html as _html
+SITE_URL = 'https://sheroots.gentize.in/'
+HOME_TITLE = 'SHEroots Physiotherapy Clinic Madurai | Women&#39;s Health'
+HOME_DESC = ('Women-first physiotherapy clinic in Chinna Chokkikulam, Madurai. Back, neck and knee pain, '
+             'pelvic floor, pregnancy and postnatal care. Call 99406 62500.')
+OG_IMAGE = SITE_URL + 'images/hero-bg-poster.jpg'
+CLINIC_ID = SITE_URL + '#clinic'
+DOCTOR_ID = SITE_URL + '#dr-chitra-karthick'
+ADDRESS = 'No.3, Kamarajar 3rd Cross Street, Chinna Chokkikulam, Madurai &ndash; 625002'
+MAPS_URL = 'https://www.google.com/maps?cid=15464404039475393364'
+TX_URL = lambda slug: f'{SITE_URL}treatments/{slug}.html'
 
-print('built 1 page (one-page landing)')
+def _txt(fragment):
+    t = re.sub(r'<[^>]+>', ' ', fragment)
+    t = _html.unescape(re.sub(r'\s+', ' ', t)).strip()
+    return re.sub(r'^[^\w]+', '', t)          # drop leading emoji
+
+def clinic_node():
+    return {
+        '@type': 'MedicalClinic', '@id': CLINIC_ID,
+        'name': 'SHEroots Physiotherapy Clinic', 'alternateName': 'SHEroots',
+        'slogan': 'Strong roots. Stronger you.',
+        'description': _html.unescape(HOME_DESC),
+        'url': SITE_URL, 'logo': SITE_URL + 'images/logo-right.webp',
+        'image': [OG_IMAGE, SITE_URL + 'images/doctor-banner.webp'],
+        'telephone': '+91-99406-62500', 'email': 'sherootsphysio@gmail.com',
+        'address': {'@type': 'PostalAddress',
+                    'streetAddress': 'No.3, Kamarajar 3rd Cross Street, Chinna Chokkikulam',
+                    'addressLocality': 'Madurai', 'addressRegion': 'Tamil Nadu',
+                    'postalCode': '625002', 'addressCountry': 'IN'},
+        'hasMap': _html.unescape(MAPS_URL),
+        'areaServed': {'@type': 'City', 'name': 'Madurai'},
+        'openingHoursSpecification': [
+            {'@type': 'OpeningHoursSpecification',
+             'dayOfWeek': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+             'opens': o, 'closes': c} for o, c in (('09:00', '13:00'), ('17:00', '21:00'))],
+        'medicalSpecialty': 'https://schema.org/Physiotherapy',
+        'availableService': [{'@type': 'MedicalTherapy', 'name': sv[1], 'url': TX_URL(sv[0])} for sv in C.SERVICES],
+        'knowsLanguage': ['en', 'ta'],
+        'employee': {'@id': DOCTOR_ID},
+        'sameAs': ['https://www.instagram.com/sherootsphysiotherapy_clinic/', 'https://www.google.com/maps?cid=15464404039475393364'],
+    }
+
+def doctor_node():
+    return {
+        '@type': 'Person', '@id': DOCTOR_ID,
+        'name': 'Chitra Karthick', 'honorificPrefix': 'Dr.', 'honorificSuffix': 'BPT, MIAP, MD (Acu)',
+        'jobTitle': 'Physiotherapist',
+        'description': "Women's health and pelvic floor specialist, prenatal and postnatal trainer and yoga trainer.",
+        'knowsAbout': ["Women's health physiotherapy", 'Pelvic floor rehabilitation',
+                       'Prenatal and postnatal exercise', 'Yoga'],
+        'image': SITE_URL + 'images/dr-portrait.webp', 'worksFor': {'@id': CLINIC_ID},
+    }
+
+def head_tags(url, title, desc, image, image_alt, graph, preload=''):
+    ld = json.dumps({'@context': 'https://schema.org', '@graph': graph}, ensure_ascii=False, indent=1).replace('</', '<\\/')
+    pre = f'\n  <link rel="preload" as="image" href="{preload}" fetchpriority="high">' if preload else ''
+    return f"""
+  <link rel="canonical" href="{url}">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="geo.region" content="IN-TN">
+  <meta name="geo.placename" content="Madurai">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="SHEroots Physiotherapy Clinic">
+  <meta property="og:locale" content="en_IN">
+  <meta property="og:url" content="{url}">
+  <meta property="og:title" content="{title}">
+  <meta property="og:description" content="{desc}">
+  <meta property="og:image" content="{image}">
+  <meta property="og:image:alt" content="{image_alt}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{title}">
+  <meta name="twitter:description" content="{desc}">
+  <meta name="twitter:image" content="{image}">{pre}
+  <script type="application/ld+json">
+{ld}
+  </script>"""
+
+def seo_head(main_html):
+    website = {'@type': 'WebSite', '@id': SITE_URL + '#website', 'url': SITE_URL,
+               'name': 'SHEroots Physiotherapy Clinic', 'inLanguage': 'en-IN', 'publisher': {'@id': CLINIC_ID}}
+    graph = [clinic_node(), doctor_node(), website]
+    faqs = []
+    for m in re.finditer(r'<button type="button" class="fc-q".*?</button></h3>\s*<div[^>]*>(.*?)</div>\s*</div>', main_html, re.S):
+        q = _txt(re.search(r'<button.*?</button>', m.group(0), re.S).group(0))
+        a = _txt(m.group(1))
+        if q and a:
+            faqs.append({'@type': 'Question', 'name': q, 'acceptedAnswer': {'@type': 'Answer', 'text': a}})
+    if faqs:
+        graph.append({'@type': 'FAQPage', '@id': SITE_URL + '#faq', 'mainEntity': faqs})
+    return head_tags(SITE_URL, HOME_TITLE, HOME_DESC, OG_IMAGE, 'SHEroots Physiotherapy Clinic in Madurai',
+                     graph, preload='images/hero-bg-poster.jpg')
+
+page('index.html', HOME_TITLE, HOME_DESC, home, 'index.html', extra_head=seo_head(home))
+
+# ---------- ONE PAGE PER TREATMENT: treatments/<slug>.html ----------
+SUFFIXES = ('Physiotherapy', 'Treatment', 'Therapy', 'Care', 'Rehabilitation', 'Correction')
+by_slug = {sv[0]: sv for sv in C.SERVICES}
+import tx_content as TX
+TICK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7"/></svg>'
+
+def tx_page(sv):
+    slug, en, ta, group, intro, ltitle, signs, helps, rel = sv
+    name = esc(en)
+    kw = '' if en.endswith(SUFFIXES) else ' Physiotherapy'
+    # Keep titles <= 60 and descriptions <= 155 visible characters so search results don't cut them off
+    vis = lambda x: len(_html.unescape(x))
+    title = next(t for t in (f'{name}{kw} in Madurai | SHEroots', f'{name}{kw} in Madurai',
+                             f'{name} in Madurai | SHEroots', f'{name} in Madurai') if vis(t) <= 60 or t.endswith('in Madurai') and ' | ' not in t and kw == '')
+    desc = next(d for d in (
+        f'{name} treatment in Madurai at SHEroots, Chinna Chokkikulam. Assessment, hands-on care and a home plan. Call 99406 62500.',
+        f'{name} treatment in Madurai at SHEroots. Assessment, hands-on care and a home plan. Call 99406 62500.',
+        f'{name} treatment in Madurai at SHEroots. Hands-on care and a home plan. Call 99406 62500.') if vis(d) <= 155 or d.startswith(name + ' treatment in Madurai at SHEroots. Hands'))
+    desc = desc.replace('"', '&quot;')
+    h1_tail = f'{kw.strip().lower() + " " if kw else ""}in Madurai'
+    url = TX_URL(slug)
+    img_alt = f'{name} physiotherapy at SHEroots, Madurai'
+    li = lambda xs: ''.join(f'<li>{TICK}<span>{esc(x)}</span></li>' for x in xs)
+    related = ''.join(
+        f'<li><a href="treatments/{r}.html"><img src="images/tx-{r}.jpg" width="60" height="75" loading="lazy" alt="">'
+        f'<span>{esc(by_slug[r][1])}</span></a></li>' for r in rel if r in by_slug)
+    X = TX.EXTRA[slug]
+    svc_name = name + kw
+    is_condition = ltitle == 'Signs you may notice' and slug not in ('pregnancy-care', 'postnatal-care')
+    causes_h = 'What can cause it?' if is_condition else 'Common reasons people come to us'
+    general = [qa for qa in C.FAQ if qa[0] in ('Is this right for me?', 'What should I bring?')]
+    faqs = list(X['faqs']) + general
+    faq = ''.join(f'<details class="tp-faq"{" open" if i == 0 else ""}><summary>{esc(q)}</summary><p>{esc(a)}</p></details>' for i, (q, a) in enumerate(faqs))
+    warn = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9.5 17h-19L12 3z"/><path d="M12 10v4.5M12 17.2v.1"/></svg>' 
+    crumbs = (f'<nav class="tp-crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span>'
+              f'<a href="/#explore">Treatments</a><span aria-hidden="true">/</span><span aria-current="page">{name}</span></nav>')
+    main = f'''    <section class="tp-hero">
+      <div class="wrap tp-hero-in">
+        <div class="tp-hero-copy">
+          {crumbs}
+          <p class="kicker"><i></i>{esc(group)}</p>
+          <h1>{name} <span>{h1_tail}</span></h1>
+          <p class="tp-ta" lang="ta">{ta}</p>
+          <p class="tp-lead">{esc(intro)}</p>
+          <div class="tp-cta">
+            <a class="btn btn-primary btn-lg" data-call href="/#contact">{PHONE_SVG}Call us</a>
+            <a class="btn btn-ghost btn-lg" href="/#contact">Book a session</a>
+          </div>
+        </div>
+        <figure class="tp-hero-img"><img src="images/tx-{slug}.jpg" width="600" height="750" alt="{img_alt}" fetchpriority="high"></figure>
+      </div>
+    </section>
+
+    <section class="tp-body">
+      <div class="wrap tp-grid">
+        <article class="tp-main">
+          <div class="tp-two">
+            <div class="tp-box"><h2>{esc(ltitle)}</h2><ul class="tp-ticks">{li(signs)}</ul></div>
+            <div class="tp-box tp-box-pink"><h2>How physiotherapy helps</h2><ul class="tp-ticks">{li(helps)}</ul></div>
+          </div>
+
+          <h2>{causes_h}</h2>
+          <ul class="tp-dots">{''.join(f'<li>{esc(x)}</li>' for x in X['causes'])}</ul>
+
+          <h2>What {svc_name} sessions involve</h2>
+          <p>{esc(X['sessions'])}</p>
+
+          <h2>How long recovery can take</h2>
+          <p>{esc(X['timeline'])}</p>
+
+          <h2>What to expect at your first visit</h2>
+          <ol class="tp-steps">
+            <li><b>We listen</b><span>A relaxed conversation about your history, your goals and what worries you.</span></li>
+            <li><b>We assess</b><span>A careful assessment to find the cause, with every step explained first.</span></li>
+            <li><b>We plan together</b><span>Hands-on care, guided exercise and a home plan made for you.</span></li>
+          </ol>
+
+          <div class="tp-two tp-two-gap">
+            <div class="tp-box"><h2>Simple things that help at home</h2><ul class="tp-ticks">{li(X['home'])}</ul></div>
+            <div class="tp-box tp-warn"><h2>{warn}See a doctor first if you have</h2><ul class="tp-dots">{''.join(f'<li>{esc(x)}</li>' for x in X['urgent'])}</ul></div>
+          </div>
+
+          <h2>{name} care at SHEroots, Madurai</h2>
+          <p>SHEroots is a women-first physiotherapy clinic in Chinna Chokkikulam, Madurai, led by
+          <a href="/#doctor">Dr. Chitra Karthick</a> (BPT, MIAP, MD (Acu)). Every plan starts with a proper assessment,
+          and we look for the reason behind your symptoms, not only the pain itself. Sessions take place in a calm,
+          private room, and we explain each step in plain words, in English or Tamil.</p>
+
+          <h2>{name}: common questions</h2>
+          <div class="tp-faqs">{faq}</div>
+
+          <p class="tp-note">This page is general information, not a diagnosis or medical advice. Results vary from person to person. If you have severe or sudden symptoms, please seek urgent medical care.</p>
+        </article>
+
+        <aside class="tp-side">
+          <div class="tp-card tp-book">
+            <h2>Book a session</h2>
+            <p class="tp-hours">Open daily<br><b>9 AM &ndash; 1 PM &middot; 5 PM &ndash; 9 PM</b></p>
+            <a class="btn btn-primary" data-call href="tel:+919940662500">{PHONE_SVG}Call 99406 62500</a>
+            <a class="btn btn-ghost" href="/#contact">Request an appointment</a>
+            <p class="tp-addr">{ADDRESS}</p>
+            <a class="tp-dir" href="{MAPS_URL}" target="_blank" rel="noopener">Get directions <span aria-hidden="true">&rarr;</span></a>
+          </div>
+          <div class="tp-card">
+            <h2>Related treatments</h2>
+            <ul class="tp-rel">{related}</ul>
+            <a class="tp-all" href="/#explore">All treatments <span aria-hidden="true">&rarr;</span></a>
+          </div>
+        </aside>
+      </div>
+    </section>
+'''
+    graph = [
+        {'@type': 'MedicalWebPage', '@id': url + '#page', 'url': url,
+         'name': _html.unescape(title), 'description': _html.unescape(desc),
+         'inLanguage': 'en-IN', 'audience': {'@type': 'PeopleAudience', 'geographicArea': {'@type': 'City', 'name': 'Madurai'}},
+         'about': {'@type': 'MedicalTherapy', 'name': en},
+         'primaryImageOfPage': SITE_URL + f'images/tx-{slug}.jpg',
+         'publisher': {'@id': CLINIC_ID},
+         'breadcrumb': {'@id': url + '#breadcrumb'}},
+        {'@type': 'BreadcrumbList', '@id': url + '#breadcrumb', 'itemListElement': [
+            {'@type': 'ListItem', 'position': 1, 'name': 'Home', 'item': SITE_URL},
+            {'@type': 'ListItem', 'position': 2, 'name': 'Treatments', 'item': SITE_URL + '#explore'},
+            {'@type': 'ListItem', 'position': 3, 'name': en, 'item': url}]},
+        {'@type': 'FAQPage', '@id': url + '#faq', 'mainEntity': [
+            {'@type': 'Question', 'name': q, 'acceptedAnswer': {'@type': 'Answer', 'text': a}} for q, a in faqs]},
+        clinic_node(), doctor_node(),
+    ]
+    extra = head_tags(url, title, desc, SITE_URL + f'images/tx-{slug}.jpg', img_alt, graph)
+    page(f'treatments/{slug}.html', title, desc, main, f'treatments/{slug}.html', depth=1, extra_head=extra)
+
+for sv in C.SERVICES:
+    tx_page(sv)
+
+# ---------- 404 page (served by nginx for any missing URL, so every link is absolute) ----------
+nf_links = ''.join(f'<li><a href="{TX_URL(sv[0]).replace(SITE_URL, "/")}">{esc(sv[1])}</a></li>' for sv in C.SERVICES[:8])
+nf_main = f'''    <section class="section nf">
+      <div class="container nf-wrap">
+        <p class="kicker">Page not found</p>
+        <h1>Sorry, we couldn&#39;t find that page</h1>
+        <p class="lead">The link may be old or mistyped. Here is where you can go next:</p>
+        <div class="nf-acts">
+          <a class="btn btn-primary btn-lg" href="/">Go to the home page</a>
+          <a class="btn btn-ghost btn-lg" href="/#contact">Book an appointment</a>
+          <a class="btn btn-ghost btn-lg" data-call href="tel:{PHONE_TEL}">Call 99406 62500</a>
+        </div>
+        <h2 class="nf-h">Popular treatments</h2>
+        <ul class="nf-list">{nf_links}<li><a href="/#explore">All treatments &rarr;</a></li></ul>
+      </div>
+    </section>'''
+page('404.html', 'Page not found | SHEroots Physiotherapy Clinic', 'This page could not be found.', nf_main, '', extra_head='\n  <meta name="robots" content="noindex">')
+_nf = open(ROOT + '404.html', encoding='utf-8').read().replace('data-root=""', 'data-root="/"')
+_nf = re.sub(r'(href|src)="(?!https?:|#|tel:|mailto:|/|data:)([^"]+)"', r'\1="/\2"', _nf)
+_nf = re.sub(r'href="#(?!main")', 'href="/#', _nf)
+open(ROOT + '404.html', 'w', encoding='utf-8').write(_nf)
+
+# ---------- sitemap.xml ----------
+import datetime
+today = datetime.date.today().isoformat()
+urls = [(SITE_URL, ['images/hero-bg-poster.jpg', 'images/doctor-banner.webp', 'images/dr-portrait.webp'])] + \
+       [(TX_URL(sv[0]), [f'images/tx-{sv[0]}.jpg']) for sv in C.SERVICES]
+sm = ''.join(f'  <url>\n    <loc>{u}</loc>\n    <lastmod>{today}</lastmod>\n' +
+             ''.join(f'    <image:image><image:loc>{SITE_URL}{i}</image:loc></image:image>\n' for i in imgs) +
+             '  </url>\n' for u, imgs in urls)
+open(ROOT + 'sitemap.xml', 'w', encoding='utf-8').write(
+    '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" '
+    'xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n' + sm + '</urlset>\n')
+
+print(f'built index.html + {len(C.SERVICES)} treatment pages + sitemap.xml')
 sys.exit(0)
 
 # ---------- ABOUT ----------
@@ -249,7 +539,6 @@ page('contact.html', 'Contact &amp; Book | SHEroots Physiotherapy Clinic', 'Book
 def card(i, s):
     slug, en, ta = s[0], s[1], s[2]
     return f'''          <a class="card reveal" href="treatments/{slug}.html">
-            <span class="no" aria-hidden="true">{i:02d}</span>
             <h3>{esc(en)}</h3>
             <p lang="ta">{esc(ta)}</p>
             <span class="more">Learn more <span aria-hidden="true">→</span></span>
@@ -305,7 +594,7 @@ for s in C.SERVICES:
           <div class="side-card">
             <h3>Book a session</h3>
             <p>Open 9 AM – 1 PM and 5 PM – 9 PM.<br><span lang="ta">காலை 9 – 1 · மாலை 5 – 9</span></p>
-            <a class="btn btn-primary" data-call href="#contact">{PHONE_SVG}Call us <b class="call-num"></b></a>
+            <a class="btn btn-primary" data-call href="tel:+919940662500">{PHONE_SVG}Call us <b class="call-num">99406 62500</b></a>
             <a class="btn btn-ghost" href="contact.html">Request an appointment</a>
           </div>
           <div class="side-card">
@@ -334,7 +623,7 @@ if C.AREAS:
       <h2>Treatments available</h2><ul class="ticks-list cols">{links}</ul>
     </div>
     <aside class="svc-side"><div class="side-card"><h3>Book a session</h3><p>Open 9 AM – 1 PM and 5 PM – 9 PM.</p>
-      <a class="btn btn-primary" data-call href="#contact">{PHONE_SVG}Call us <b class="call-num"></b></a></div></aside></div></section>
+      <a class="btn btn-primary" data-call href="tel:+919940662500">{PHONE_SVG}Call us <b class="call-num">99406 62500</b></a></div></aside></div></section>
 ''' + CTA
         page(f'areas/{a["slug"]}.html', f'Physiotherapy in {esc(a["name"])} | SHEroots Physiotherapy Clinic', esc(a['blurb']).replace('"', '&quot;'), m, 'areas/index.html', depth=1)
 

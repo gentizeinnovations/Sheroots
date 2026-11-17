@@ -3,6 +3,7 @@
    Edit the ANSWERS below to change what it says. Anything unknown points patients to a call/booking. */
 (function () {
   const BASE = document.documentElement.getAttribute('data-root') || '';
+  const waHref = text => 'https://wa.me/' + (window.SHE_WA || '919025603429') + '?text=' + encodeURIComponent(text);
   const HOURS = '9 AM – 1 PM and 5 PM – 9 PM';
   const callHref = () => (typeof CLINIC_PHONE !== 'undefined' && CLINIC_PHONE)
     ? 'tel:' + CLINIC_PHONE.replace(/[^+\d]/g, '') : '#contact';
@@ -55,9 +56,9 @@
       actions: ['call'], next: ['visit', 'new']
     },
     cost: {
-      chip: 'Fees & health funds',
-      kw: ['cost', 'price', 'fee', 'fees', 'how much', 'charge', 'charges', 'pay', 'payment', 'rate', 'insurance', 'fund', 'rebate', 'claim', 'referral', 'prescription', 'gp'],
-      text: "We want to give you the right answer, so please ask our team directly about fees, health fund rebates and whether you need a referral. A quick call is the fastest way.",
+      chip: 'Fees & payment',
+      kw: ['cost', 'price', 'fee', 'fees', 'how much', 'charge', 'charges', 'pay', 'payment', 'rate', 'insurance', 'claim', 'referral', 'prescription', 'gp'],
+      text: "We want to give you the right answer, so please ask our team directly about session fees, payment options and whether you need a doctor's referral. A quick call is the fastest way.",
       actions: ['call', 'book'], next: ['hours', 'new']
     },
     where: {
@@ -123,7 +124,7 @@
     urgent: {
       chip: null,
       kw: ['emergency', 'urgent', 'chest pain', 'cannot breathe', "can't breathe", 'faint', 'stroke', 'numb', 'paralys', 'suicid', 'bleeding'],
-      text: "⚠️ If this is an emergency or you have severe symptoms (such as chest pain, trouble breathing, sudden weakness or numbness, or heavy bleeding), please call your local emergency number straight away (000 in Australia) or go to the nearest emergency department. We can't assess emergencies by chat.",
+      text: "⚠️ If this is an emergency or you have severe symptoms (such as chest pain, trouble breathing, sudden weakness or numbness, or heavy bleeding), please call 108 for an ambulance straight away or go to the nearest hospital emergency department. We can't assess emergencies by chat.",
       actions: [], next: []
     },
     thanks: {
@@ -138,6 +139,7 @@
     actions: ['call', 'book'], next: ['treat', 'hours', 'cost']
   };
   const START = ['new', 'treat', 'hours', 'visit', 'cost', 'book'];
+  Object.keys(ANSWERS).forEach(k => { ANSWERS[k].key = k; });   // lets a reply hide the chip that was just asked
 
   // ---------- UI ----------
   const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt) e.textContent = txt; return e; };
@@ -173,16 +175,20 @@
     if (actions && actions.length) {
       const row = el('div', 'msg-actions');
       actions.forEach(k => {
-        const a = ACTIONS[k](); const link = el('a', 'act' + (a.primary ? ' primary' : ''), a.label); link.href = a.href;
+        const a = typeof k === 'string' ? ACTIONS[k]() : k; const link = el('a', 'act' + (a.primary ? ' primary' : ''), a.label); link.href = a.href;
+        if (a.newTab) { link.target = '_blank'; link.rel = 'noopener'; }
+        if (a.track) link.setAttribute('data-track-open', '');     // opens the "Track my request" panel (script.js)
         row.appendChild(link);
       });
       m.appendChild(row);
     }
     log.appendChild(m); scroll();
   }
-  function setChips(keys) {
-    chips.replaceChildren(); chips.classList.remove('wrap');
-    keys.filter(k => ANSWERS[k] && ANSWERS[k].chip).forEach(k => {
+  function setChips(keys, skip) {
+    chips.replaceChildren(); chips.classList.remove('wrap'); chips.scrollLeft = 0;
+    // suggested follow-ups first, then the rest of the main menu, so every option is always one tap away
+    const all = [...new Set(keys.concat(START))].filter(k => k !== skip);
+    all.filter(k => ANSWERS[k] && ANSWERS[k].chip).forEach(k => {
       const b = el('button', null, ANSWERS[k].chip); b.type = 'button';
       b.addEventListener('click', () => ask(ANSWERS[k].chip, k));
       chips.appendChild(b);
@@ -190,7 +196,7 @@
   }
   function reply(entry) {
     const typing = el('div', 'msg bot typing', '…'); log.appendChild(typing); scroll();
-    setTimeout(() => { typing.remove(); say('bot', entry.text, entry.actions); setChips(entry.next && entry.next.length ? entry.next : START); }, 450);
+    setTimeout(() => { typing.remove(); say('bot', entry.text, entry.actions); setChips(entry.next || [], entry.key); }, 450);
   }
   const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   function match(q) {
@@ -232,6 +238,7 @@
   const minsOf = (h, m) => h * 60 + m;
   const okWindow = t => (t >= 540 && t <= 750) || (t >= 1020 && t <= 1230);   // 9:00-12:30 and 5:00-8:30 PM
   const isPast = (d, t) => { const n = new Date(); return sameDay(d, today0()) && t <= minsOf(n.getHours(), n.getMinutes()) + 30; };
+  const isoDate = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   let flow = null;
 
   function parseDate(s) {
@@ -307,22 +314,34 @@
     flowChips(opts.map(d => ({ label: chipDay(d), fn: () => setDate(d) })));
   }
   function setDate(d) { flow.d.date = d; botSays(dLabel(d) + ', noted.\nWhat time would you like? We\'re open 9 AM – 1 PM and 5 PM – 9 PM.', askTime); }
-  function askTime() {
-    flow.step = 'time'; input.placeholder = 'Or type a time, e.g. 6:30 PM';
-    const items = SLOTS.filter(([h, m]) => !isPast(flow.d.date, minsOf(h, m))).map(([h, m]) => ({ label: tLabel(h, m), fn: () => setTime(h, m) }));
-    if (!items.length) { botSays('That day has no times left. Please pick another day.', askDate); return; }
-    flowChips(items);
+  // Free slots for a day come from the booking server (so two people can't take the same time); local list if offline
+  function loadSlots(d) {
+    const local = () => SLOTS.filter(([h, m]) => !isPast(d, minsOf(h, m))).map(([h, m]) => [h, m]);
+    return fetch('/api/slots?date=' + isoDate(d)).then(r => r.ok ? r.json() : Promise.reject())
+      .then(j => j.slots.filter(x => x.free).map(x => x.time.split(':').map(Number))).catch(local);
   }
-  function setTime(h, m) { flow.d.time = tLabel(h, m); botSays('Perfect, ' + flow.d.time + '.\nWhat is your name?', askName); }
+  function askTime() {
+    flow.step = 'time'; input.placeholder = 'Or type a time, e.g. 6 PM';
+    const d = flow.d.date;
+    loadSlots(d).then(free => {
+      if (!flow || flow.d.date !== d) return;
+      flow.free = free;
+      if (!free.length) { botSays('Sorry, ' + dLabel(d) + ' is fully booked. 🌸 Please pick another day.', askDate); return; }
+      flowChips(free.map(([h, m]) => ({ label: tLabel(h, m), fn: () => setTime(h, m) })));
+    });
+  }
+  function setTime(h, m) { flow.d.hm = pad(h) + ':' + pad(m); flow.d.time = tLabel(h, m); botSays('Perfect, ' + flow.d.time + '.\nWhat is your name?', askName); }
   function askName() { flow.step = 'name'; input.placeholder = 'Your full name'; flowChips([]); input.focus(); }
   function setName(n) { flow.d.name = n; botSays('Nice to meet you, ' + n.split(' ')[0] + '! What is the best phone number to reach you on?', askPhone); }
   function askPhone() { flow.step = 'phone'; input.placeholder = 'Your phone number'; flowChips([]); input.focus(); }
-  function setPhone(p) { flow.d.phone = p; botSays('Anything you would like us to know? For example where it hurts, or if you are pregnant. You can skip this.', askNote); }
+  function setPhone(p) { flow.d.phone = p; botSays('What is your email? We will send your confirmation there as soon as the clinic accepts.', askEmail); }
+  function askEmail() { flow.step = 'email'; input.placeholder = 'you@example.com'; flowChips([]); input.focus(); }
+  function setEmail(e) { flow.d.email = e; botSays('Anything you would like us to know? For example where it hurts, or if you are pregnant. You can skip this.', askNote); }
   function askNote() { flow.step = 'note'; input.placeholder = 'A short note (optional)'; flowChips([{ label: 'Skip', fn: () => setNote('') }]); }
   function setNote(n) { flow.d.note = n; botSays(summary(), askConfirm); }
   function summary() {
     const d = flow.d;
-    return 'Please check your details:\n• For: ' + d.concern + '\n• Day: ' + dLabel(d.date) + '\n• Time: ' + d.time + '\n• Name: ' + d.name + '\n• Phone: ' + d.phone + (d.note ? '\n• Note: ' + d.note : '') +
+    return 'Please check your details:\n• For: ' + d.concern + '\n• Day: ' + dLabel(d.date) + '\n• Time: ' + d.time + '\n• Name: ' + d.name + '\n• Phone: ' + d.phone + (d.email ? '\n• Email: ' + d.email : '') + (d.note ? '\n• Note: ' + d.note : '') +
       '\n\nShall I send this booking request to the clinic?';
   }
   function askConfirm() {
@@ -330,22 +349,59 @@
     flowChips([{ label: 'Yes, send it', fn: sendBooking }, { label: 'Change something', fn: () => { flow.d = {}; botSays("No problem, let's start again.\nWhat would you like help with?", askConcern); } }]);
   }
   function sendBooking() {
-    const d = flow.d, ref = 'SHE-' + d.date.getFullYear().toString().slice(2) + pad(d.date.getMonth() + 1) + pad(d.date.getDate()) + '-' + Math.floor(100 + Math.random() * 900);
-    const body = ['Appointment request (via the website chat)', 'Reference: ' + ref, '', 'Name: ' + d.name, 'Phone: ' + d.phone, 'For: ' + d.concern, 'Day: ' + dLabel(d.date), 'Time: ' + d.time].concat(d.note ? ['Note: ' + d.note] : []).join('\n');
-    const subj = 'Appointment request ' + ref + ': ' + d.concern + ', ' + dLabel(d.date) + ' ' + d.time;
-    lastMailto = 'mailto:' + EMAIL + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
-    const gmail = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(EMAIL) + '&su=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
-    const card = el('div', 'msg bot book-card');
-    const row = (k, v) => '<div><span>' + k + '</span><b></b></div>';
-    card.innerHTML = '<div class="bc-top"><strong>Booking request ready</strong><em>' + ref + '</em></div><div class="bc-rows">' +
-      [['For', d.concern], ['Day', dLabel(d.date)], ['Time', d.time], ['Name', d.name], ['Phone', d.phone]].concat(d.note ? [['Note', d.note]] : []).map(r => row(r[0], r[1])).join('') +
-      '</div><p class="bc-status">Status: waiting for you to press <b>Send</b> in the email that opens. Our team confirms your time by phone or reply.</p>';
-    card.querySelectorAll('.bc-rows b').forEach((n, i) => { n.textContent = [d.concern, dLabel(d.date), d.time, d.name, d.phone].concat(d.note ? [d.note] : [])[i]; });
-    const acts = el('div', 'msg-actions');
-    [['Send with Gmail', gmail, true, true], ['Use my mail app (Outlook etc.)', lastMailto, false, false], ['Call ' + (typeof CLINIC_PHONE !== 'undefined' ? CLINIC_PHONE : ''), callHref(), false, false]].forEach(([t, h, pr, nw]) => { const l = el('a', 'act' + (pr ? ' primary' : ''), t); l.href = h; if (nw) { l.target = '_blank'; l.rel = 'noopener'; } acts.appendChild(l); });
-    card.appendChild(acts);
-    flow = null; chips.classList.remove('wrap'); input.placeholder = 'Type your question…';
-    botSays("Thank you! I've prepared your booking request. 🌸 Here is your summary for reference:", () => { log.appendChild(card); setChips(START); scroll(); setTimeout(scroll, 60); });
+    const d = flow.d, first = d.name.split(' ')[0];
+    const lines = ['Appointment request (via the website chat)', '', 'Name: ' + d.name, 'Phone: ' + d.phone, 'For: ' + d.concern, 'Day: ' + dLabel(d.date), 'Time: ' + d.time].concat(d.email ? ['Email: ' + d.email] : [], d.note ? ['Note: ' + d.note] : []).join('\n');
+    const subj = 'Appointment request: ' + d.concern + ', ' + dLabel(d.date) + ' ' + d.time;
+    lastMailto = 'mailto:' + EMAIL + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(lines);
+    const gmail = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(EMAIL) + '&su=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(lines);
+    const card = (title, ref, statusText, sent) => {
+      const rows = [['For', d.concern], ['Day', dLabel(d.date)], ['Time', d.time], ['Name', d.name], ['Phone', d.phone]].concat(d.email ? [['Email', d.email]] : [], d.note ? [['Note', d.note]] : []);
+      const c = el('div', 'msg bot book-card' + (sent ? ' sent' : ''));
+      c.innerHTML = '<div class="bc-top"><strong></strong><em></em></div><div class="bc-rows">' + rows.map(() => '<div><span></span><b></b></div>').join('') + '</div><p class="bc-status"></p>';
+      c.querySelector('.bc-top strong').textContent = title; c.querySelector('em').textContent = ref || 'Not sent';
+      if (!ref) c.querySelector('em').remove();
+      c.querySelectorAll('.bc-rows > div').forEach((r, i) => { r.firstChild.textContent = rows[i][0]; r.lastChild.textContent = rows[i][1]; });
+      c.querySelector('.bc-status').textContent = statusText;
+      return c;
+    };
+    const finish = () => { flow = null; chips.classList.remove('wrap'); input.placeholder = 'Type your question…'; setChips(START); scroll(); setTimeout(scroll, 60); };
+    flow.step = 'sending'; chips.replaceChildren();
+    const sending = el('div', 'msg bot typing', 'Sending your request to the clinic…'); log.appendChild(sending); scroll();
+    const ctrl = 'AbortController' in window ? new AbortController() : null, timer = setTimeout(() => ctrl && ctrl.abort(), 15000);
+    fetch('/api/book', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl ? ctrl.signal : undefined,
+      body: JSON.stringify({ name: d.name, phone: d.phone, email: d.email || '', concern: d.concern, date: isoDate(d.date), time: d.hm, note: d.note || '', source: 'chat' })
+    }).then(r => r.json().then(j => ({ code: r.status, j }))).catch(() => ({ code: 0, j: {} }))
+      .then(({ code, j }) => {
+        clearTimeout(timer); sending.remove();
+        if (code === 200 && j.ok) {
+          if (window.sheRememberBooking) window.sheRememberBooking(j);
+          log.appendChild(card('Booking request sent ✓', j.ref, 'Waiting for the clinic to confirm. We\'ll call you on ' + d.phone + '.', true));
+          say('bot', 'Done, ' + first + '! ✅ Your booking request has reached the clinic.\n\nWhat happens next:\n1. The clinic reviews your request (usually within a few hours during clinic time).\n2. You get the confirmation by email to ' + d.email + ', on WhatsApp or a call on ' + d.phone + ', and on this website under "Track my request".\n3. Come 10 minutes early, in comfortable clothes, with any scan reports. 🌸\n\nKeep your reference ' + j.ref + '. Tap "Track my request" (also on the left edge of the page) to see when the clinic confirms.',
+            [{ label: 'Also send on WhatsApp (faster reply)', href: waHref('Hi SHEroots, I just sent a booking request on your website (Ref: ' + j.ref + ').\n' + lines.split('\n').slice(2).join('\n')), newTab: true, primary: true }]
+              .concat(j.status_url ? [{ label: 'Track my request', href: j.status_url, track: true }] : []));
+          return finish();
+        }
+        if (code === 409 && j.alternatives) {      // someone else just took this slot
+          const alts = j.alternatives;
+          flow.step = 'time';
+          botSays('Sorry, ' + first + ', ' + d.time + ' on ' + dLabel(d.date) + ' was just booked by someone else. 🙏\n' +
+            (alts.length ? 'Here are the nearest free times. Tap one and I\'ll send your request straight away:' : 'Please pick another day.'), () => {
+            if (!alts.length) return askDate();
+            flowChips(alts.map(a => ({ label: a.label, fn: () => {
+              const [y, mo, da] = a.date.split('-').map(Number), [h, mi] = a.time.split(':').map(Number);
+              flow.d.date = new Date(y, mo - 1, da); flow.d.hm = a.time; flow.d.time = tLabel(h, mi); sendBooking();
+            } })));
+          });
+          return;
+        }
+        const acts = el('div', 'msg-actions');
+        [['Send on WhatsApp', waHref('Hi SHEroots, I would like to book an appointment.\n' + lines.split('\n').slice(2).join('\n')), true, true], ['Send with Gmail', gmail, false, true], ['Use my mail app (Outlook etc.)', lastMailto, false, false], ['Call ' + (typeof CLINIC_PHONE !== 'undefined' ? CLINIC_PHONE : ''), callHref(), false, false]].forEach(([t, h, pr, nw]) => { const l = el('a', 'act' + (pr ? ' primary' : ''), t); l.href = h; if (nw) { l.target = '_blank'; l.rel = 'noopener'; } acts.appendChild(l); });
+        const c = card('Booking request not sent', '', 'We could not send this automatically. Please send it on WhatsApp, by email, or call us, and we\'ll confirm your time.', false);
+        c.appendChild(acts);
+        say('bot', 'Sorry, ' + first + ', something went wrong sending your request. 🙏 Your details are below, so you can send them in one tap or call us.');
+        log.appendChild(c); finish();
+      });
   }
   function flowInput(text) {
     const s = text.trim();
@@ -364,12 +420,19 @@
       const mins = minsOf(t[0], t[1]);
       if (!okWindow(mins)) return botSays('We see patients from 9 AM to 1 PM and 5 PM to 9 PM. Please pick a time in those hours.', askTime);
       if (isPast(flow.d.date, mins)) return botSays('That time has already passed or is too soon today. Please pick a later time.', askTime);
-      return setTime(t[0], t[1]);
+      const free = flow.free || [], slot = free.find(([h]) => h === t[0]);
+      if (!slot) return botSays('Sorry, ' + tLabel(t[0], 0) + ' is not available that day. Please tap one of the free times below.', askTime);
+      if (t[1]) say('bot', 'We book in hourly slots, so I\'ve picked ' + tLabel(slot[0], slot[1]) + '.');
+      return setTime(slot[0], slot[1]);
     }
     if (step === 'name') return /[a-z\u0B80-\u0BFF]{2,}/i.test(s) ? setName(s.slice(0, 60)) : botSays('Could I have your name, please?', askName);
     if (step === 'phone') {
       const digits = s.replace(/\D/g, '');
       return digits.length >= 10 ? setPhone(s.replace(/[^\d+\s-]/g, '').slice(0, 20)) : botSays('That number looks too short. Please type a 10-digit mobile number.', askPhone);
+    }
+    if (step === 'email') {
+      if (/^(skip|no|none|nope)$/i.test(s)) return botSays('We need an email to send your confirmation. Please type your email address.', askEmail);
+      return /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(s) ? setEmail(s.slice(0, 120)) : botSays('That email does not look right. Please check it (for example name@gmail.com).', askEmail);
     }
     if (step === 'note') return setNote(/^(skip|no|none|nothing|nope)$/i.test(s) ? '' : s.slice(0, 200));
     if (step === 'confirm') {
