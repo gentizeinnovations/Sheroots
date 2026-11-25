@@ -36,8 +36,8 @@ CTA = '''    <section class="cta-band">
 '''
 
 def nav_links(active, base=''):
-    items = [('#top', 'Home'), ('#about', 'About'), ('#explore', 'Treatments'), ('#contact', 'Contact')]
-    cur = '#top' if not base else ('#explore' if active.startswith('treatments/') else '')
+    items = [('#top', 'Home'), ('#about', 'About'), ('#explore', 'Treatments'), ('gallery.html', 'Gallery'), ('#contact', 'Contact')]
+    cur = 'gallery.html' if active == 'gallery.html' else ('#top' if not base else ('#explore' if active.startswith('treatments/') else ''))
     return ''.join(f'<a href="{base}{h}"' + (' class="active" aria-current="page"' if h == cur else '') + f'>{n}</a>' for h, n in items)
 
 def header(active, base=''):
@@ -177,7 +177,7 @@ def finalize(html):
 def page(fname, title, desc, main, active, depth=0, extra_head=''):
     main = main.rstrip() + '\n'
     root_attr = '../' * depth
-    base = '/' if depth else ''
+    base = '/' if (depth or fname == 'gallery.html') else ''
     html = f'''<!DOCTYPE html>
 <html lang="en" data-root="{root_attr}">
 <head>
@@ -541,6 +541,43 @@ def tx_page(sv):
 for sv in C.SERVICES:
     tx_page(sv)
 
+# ---------- GALLERY PAGE: gallery.html (to add a photo/video, add one line to GALLERY) ----------
+# (poster-or-photo file, caption, alt text, width, height, video file or None) - files live in images/gallery/
+GALLERY = [
+    ('diastasis-15-days.webp', 'Diastasis recti: 15-day transformation', 'Before and after photos of a postnatal diastasis recti recovery in 15 days at SHEroots', 1500, 2000, None),
+    ('video-1.jpg', 'Play-based therapy', 'A child doing a play-based hand coordination exercise at SHEroots', 720, 1280, 'video-1.mp4'),
+    ('diastasis-before-after.webp', 'Diastasis recti improvement', 'Postnatal core improvement before and after physiotherapy at SHEroots', 1000, 2284, None),
+    ('video-3.jpg', 'Hurdle and balance training', 'A child practising hurdle stepping and balance in the SHEroots therapy room', 720, 1280, 'video-3.mp4'),
+    ('kids-balance.webp', 'Standing balance and posture', 'A child practising standing balance and posture in the SHEroots therapy room', 1200, 1200, None),
+    ('video-2.jpg', 'Guided floor exercise', 'A child doing a guided floor exercise with a physiotherapist', 720, 1280, 'video-2.mp4'),
+    ('kids-play-therapy.webp', 'Activity-based therapy', 'A child during an activity-based therapy session using balls and cones', 834, 1412, None),
+    ('video-4.jpg', 'Strength and movement', 'A child doing a strength and movement exercise on the therapy mat', 720, 1280, 'video-4.mp4'),
+]
+PLAY = '<span class="gal-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></svg></span>'
+def _gal_item(f, cap, alt, w, h, v):
+    vattr = f' data-video="images/gallery/{v}"' if v else ''
+    label = ('Play video: ' if v else 'View larger: ') + esc(cap)
+    return (f'          <li class="gal-i"><button type="button" class="gal-btn" data-gal{vattr} aria-label="{label}">'
+            f'<img src="images/gallery/{f}" width="{w}" height="{h}" alt="{esc(alt)}">'
+            f'{PLAY if v else ""}<span class="gal-cap">{esc(cap)}</span></button></li>\n')
+gal_items = ''.join(_gal_item(*g) for g in GALLERY)
+gmain = page_hero('Gallery', 'Inside SHEroots', 'Moments from our clinic: patient progress, therapy sessions and the care you can expect.') + f'''
+    <section class="gal" aria-label="Photo and video gallery">
+      <div class="wrap">
+        <ul class="gal-grid">
+{gal_items}        </ul>
+        <p class="gal-note">Tap any photo or video to view it larger.</p>
+      </div>
+      <dialog class="gal-lb" aria-label="Gallery viewer">
+        <button type="button" class="gal-x" aria-label="Close">&times;</button>
+        <button type="button" class="gal-nav gal-p" aria-label="Previous">&#8249;</button>
+        <figure><img alt="" hidden><video controls playsinline preload="none" hidden></video><figcaption></figcaption></figure>
+        <button type="button" class="gal-nav gal-n" aria-label="Next">&#8250;</button>
+      </dialog>
+    </section>
+'''
+page('gallery.html', 'Gallery | SHEroots Physiotherapy Clinic', 'Photos and videos from SHEroots Physiotherapy Clinic, Madurai: patient progress, therapy sessions and clinic moments.', gmain, 'gallery.html')
+
 # ---------- 404 page (served by nginx for any missing URL, so every link is absolute) ----------
 nf_links = ''.join(f'<li><a href="{TX_URL(sv[0]).replace(SITE_URL, "/")}">{esc(sv[1])}</a></li>' for sv in C.SERVICES[:8])
 nf_main = f'''    <section class="section nf">
@@ -567,6 +604,7 @@ open(ROOT + '404.html', 'w', encoding='utf-8').write(_nf)
 import datetime
 today = datetime.date.today().isoformat()
 urls = [(SITE_URL, ['images/hero-bg-poster.jpg', 'images/doctor-banner.webp', 'images/dr-portrait.webp'])] + \
+       [(SITE_URL + 'gallery.html', ['images/gallery/diastasis-15-days.webp'])] + \
        [(TX_URL(sv[0]), [f'images/tx-{sv[0]}.jpg']) for sv in C.SERVICES]
 sm = ''.join(f'  <url>\n    <loc>{u}</loc>\n    <lastmod>{today}</lastmod>\n' +
              ''.join(f'    <image:image><image:loc>{SITE_URL}{i}</image:loc></image:image>\n' for i in imgs) +
