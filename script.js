@@ -31,6 +31,22 @@ burger.addEventListener('click', () => setMenu(!menu.classList.contains('open'))
 menu.addEventListener('click', e => { if (e.target.closest('a')) setMenu(false); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') setMenu(false); });
 
+// Logo / "Home" links: the hero (#top) is position:sticky, so the browser thinks it is
+// always in view and ignores a jump to #top. Scroll the window to the very top ourselves.
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[href]');
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const href = a.getAttribute('href');
+  const onHome = !!document.getElementById('top');
+  const isTop = href === '#top' || href === '#' || (onHome && (href === '/' || href === '/#top' || href === 'index.html' || href === 'index.html#top'));
+  if (!isTop || !onHome) return;
+  e.preventDefault();
+  setMenu(false);
+  const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+});
+
 // Scroll reveal: see the block at the end of this file
 
 // Booking form: there is no server, so it opens a ready-to-send email to the clinic
